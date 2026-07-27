@@ -111,6 +111,9 @@ let pendingImage = "";
 let lastPhotoFile = null;
 let ocrInProgress = false;
 let urlImportInProgress = false;
+let lastUrlText = "";
+let lastUrlPage = "";
+let pendingGemmaAction = "";
 let ingredientRowId = 0;
 let stepRowId = 0;
 
@@ -429,6 +432,9 @@ function resetRecipeForm() {
   lastPhotoFile = null;
   ocrInProgress = false;
   urlImportInProgress = false;
+  lastUrlText = "";
+  lastUrlPage = "";
+  pendingGemmaAction = "";
   $("photoInput").disabled = false;
   $("importRecipeUrl").disabled = false;
   switchFormTab("photo");
@@ -444,7 +450,26 @@ function switchFormTab(tab) {
   $("photoFormPanel").hidden = tab !== "photo";
   $("urlFormPanel").hidden = tab !== "url";
   $("manualFormPanel").hidden = tab !== "manual";
+  $("gemmaBanner").hidden = tab === "manual";
   validateRecipeForm();
+}
+
+function updateGemmaKeyStatus() {
+  const ready = Boolean(GemmaRecipe.getApiKey());
+  $("gemmaBanner").classList.toggle("is-ready", ready);
+  $("gemmaKeyStatus").textContent = ready ? `APIキー設定済み・${GemmaRecipe.MODEL}` : "APIキーが未設定です";
+  $("openGemmaSettings").textContent = ready ? "変更" : "設定";
+}
+
+function openGemmaSettings(action = "") {
+  pendingGemmaAction = action;
+  $("gemmaApiKey").value = GemmaRecipe.getApiKey();
+  $("rememberGemmaKey").checked = GemmaRecipe.isRemembered();
+  $("gemmaApiKey").type = "password";
+  $("toggleGemmaKey").textContent = "表示";
+  $("toggleGemmaKey").setAttribute("aria-pressed", "false");
+  $("gemmaSettingsDialog").showModal();
+  setTimeout(() => $("gemmaApiKey").focus(), 0);
 }
 
 function knownIngredientNames() {
@@ -495,11 +520,12 @@ async function compressImage(file) {
   return canvas.toDataURL("image/jpeg", .8);
 }
 
-async function analyzePhoto(file) {
+async function analyzePhoto(file, mode = "gemma") {
   if (!file || !file.type.startsWith("image/")) { toast("画像ファイルを選択してください"); return; }
   if (file.size > 10 * 1024 * 1024) { toast("10MB以下の画像を選択してください"); return; }
-  if (ocrInProgress) return;
   lastPhotoFile = file;
+  if (mode === "gemma" && !GemmaRecipe.getApiKey()) { openGemmaSettings("photo"); return; }
+  if (ocrInProgress) return;
   ocrInProgress = true;
   $("photoInput").disabled = true;
   try {
@@ -509,34 +535,45 @@ async function analyzePhoto(file) {
     $("dropZone").classList.add("has-image");
     $("analysisStatus").hidden = false;
     $("ocrError").hidden = true;
-    $("analysisStatusTitle").textContent = "文字認識を準備しています…";
-    $("analysisStatusDetail").textContent = "初回は認識モデルの準備に少し時間がかかります";
-    $("analysisProgress").value = 0;
-    const rawText = await RecipeOCR.recognize(file, ({ status, progress, overallProgress, phase }) => {
-      const recognizing = status === "recognizing text";
-      $("analysisStatusTitle").textContent = recognizing ? "画像内の文字を読み取っています…" : "文字認識を準備しています…";
-      $("analysisStatusDetail").textContent = recognizing ? `${phase === "steps" ? "作り方を詳しく確認中" : "料理名と材料を抽出中"} ${Math.round(progress * 100)}%` : "日本語の認識モデルを読み込んでいます";
-      $("analysisProgress").value = recognizing ? Math.round(overallProgress * 100) : 0;
-    });
-    const suggestion = RecipeOCR.parse(rawText, file.name, knownIngredientNames());
+    $("fallbackOCR").hidden = mode === "local";
+    let suggestion;
+    if (mode === "gemma") {
+      $("analysisStatusTitle").textContent = "Gemma 4が画像を解析しています…";
+      $("analysisStatusDetail").textContent = "材料と作り方を照合しています";
+      $("analysisProgress").removeAttribute("value");
+      suggestion = await GemmaRecipe.analyzeImage(file, GemmaRecipe.getApiKey(), knownIngredientNames());
+    } else {
+      $("analysisStatusTitle").textContent = "端末内OCRを準備しています…";
+      $("analysisStatusDetail").textContent = "初回は認識モデルの準備に少し時間がかかります";
+      $("analysisProgress").value = 0;
+      const rawText = await RecipeOCR.recognize(file, ({ status, progress, overallProgress, phase }) => {
+        const recognizing = status === "recognizing text";
+        $("analysisStatusTitle").textContent = recognizing ? "画像内の文字を読み取っています…" : "端末内OCRを準備しています…";
+        $("analysisStatusDetail").textContent = recognizing ? `${phase === "steps" ? "作り方を詳しく確認中" : "料理名と材料を抽出中"} ${Math.round(progress * 100)}%` : "日本語の認識モデルを読み込んでいます";
+        $("analysisProgress").value = recognizing ? Math.round(overallProgress * 100) : 0;
+      });
+      suggestion = RecipeOCR.parse(rawText, file.name, knownIngredientNames());
+    }
     if (!suggestion.ingredients.length) throw new Error("材料欄を認識できませんでした");
     $("analysisStatus").hidden = true;
     $("ocrError").hidden = true;
-    applyRecipeSuggestion(suggestion, "写真");
+    applyRecipeSuggestion(suggestion, mode === "gemma" ? "Gemma 4画像" : "端末内OCR");
     toast(`${suggestion.ingredients.length}件の材料を読み取りました`);
   } catch (error) {
     $("analysisStatus").hidden = true;
     const message = error?.message || "画像を読み取れませんでした";
     const networkError = /読み込|network|fetch|timeout|タイムアウト/i.test(message);
-    $("ocrErrorTitle").textContent = networkError ? "文字認識の準備に失敗しました" : "材料を読み取れませんでした";
-    $("ocrErrorDetail").textContent = networkError
-      ? "通信環境を確認して再読み取りしてください。初回は日本語モデルの取得が必要です。"
-      : "材料欄と作り方が画面内に入った、文字の鮮明な画像で再読み取りしてください。";
+    $("ocrErrorTitle").textContent = mode === "gemma" ? "Gemma 4で解析できませんでした" : (networkError ? "端末内OCRの準備に失敗しました" : "材料を読み取れませんでした");
+    $("ocrErrorDetail").textContent = mode === "gemma"
+      ? `${message} APIキーと通信環境を確認するか、端末内OCRをお試しください。`
+      : (networkError ? "通信環境を確認して再読み取りしてください。初回は日本語モデルの取得が必要です。" : "材料欄と作り方が画面内に入った、文字の鮮明な画像で再読み取りしてください。");
+    $("fallbackOCR").hidden = mode === "local";
     $("ocrError").hidden = false;
     toast(message);
   } finally {
     ocrInProgress = false;
     $("photoInput").disabled = false;
+    $("analysisProgress").value = 0;
   }
 }
 
@@ -547,40 +584,50 @@ function normalizeRecipeUrl(value) {
   return url.href;
 }
 
-async function importRecipeFromUrl() {
+async function importRecipeFromUrl(mode = "gemma") {
   if (urlImportInProgress) return;
   let pageUrl;
   try { pageUrl = normalizeRecipeUrl($("recipeUrl").value); }
   catch (error) { $("recipeUrl").focus(); toast(error.message); return; }
+  if (mode === "gemma" && !GemmaRecipe.getApiKey()) { openGemmaSettings("url"); return; }
 
   urlImportInProgress = true;
   $("importRecipeUrl").disabled = true;
   $("urlImportStatus").hidden = false;
   $("urlImportError").hidden = true;
+  $("fallbackUrlImport").hidden = mode === "local";
   $("urlImportStatusTitle").textContent = "ページを読み取っています…";
   $("urlImportStatusDetail").textContent = "材料と作り方を探しています";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 35000);
   try {
-    const readerUrl = `https://r.jina.ai/${pageUrl}`;
-    const response = await fetch(readerUrl, { headers: { Accept: "text/plain" }, signal: controller.signal });
-    if (!response.ok) throw new Error(`ページ取得に失敗しました（${response.status}）`);
-    const text = await response.text();
+    let text = lastUrlPage === pageUrl ? lastUrlText : "";
+    if (!text) {
+      const readerUrl = `https://r.jina.ai/${pageUrl}`;
+      const response = await fetch(readerUrl, { headers: { Accept: "text/plain" }, signal: controller.signal });
+      if (!response.ok) throw new Error(`ページ取得に失敗しました（${response.status}）`);
+      text = await response.text();
+      lastUrlText = text;
+      lastUrlPage = pageUrl;
+    }
     if (text.length < 80) throw new Error("ページの内容が空でした");
-    $("urlImportStatusTitle").textContent = "レシピを整理しています…";
+    $("urlImportStatusTitle").textContent = mode === "gemma" ? "Gemma 4がレシピを整理しています…" : "従来方式でレシピを整理しています…";
     $("urlImportStatusDetail").textContent = "材料リストと番号付きの作り方を作成しています";
-    const suggestion = RecipeOCR.parseWebPage(text, pageUrl, knownIngredientNames());
+    const suggestion = mode === "gemma"
+      ? await GemmaRecipe.analyzeWebText(text, pageUrl, GemmaRecipe.getApiKey(), knownIngredientNames())
+      : RecipeOCR.parseWebPage(text, pageUrl, knownIngredientNames());
     $("urlImportStatus").hidden = true;
-    applyRecipeSuggestion(suggestion, "Webページ");
+    applyRecipeSuggestion(suggestion, mode === "gemma" ? "Gemma 4 Webページ" : "Webページ（従来方式）");
     toast(`${suggestion.ingredients.length}件の材料を取り込みました`);
   } catch (error) {
     $("urlImportStatus").hidden = true;
     const message = error?.name === "AbortError" ? "ページ取得がタイムアウトしました" : (error?.message || "ページを読み取れませんでした");
     const sectionError = /材料欄|材料を抽出/.test(message);
-    $("urlImportErrorTitle").textContent = sectionError ? "レシピの材料欄を見つけられませんでした" : "ページを読み取れませんでした";
-    $("urlImportErrorDetail").textContent = sectionError
-      ? "材料と作り方が本文に掲載されたレシピページか確認し、再読み取りしてください。"
-      : "URLが公開されているか確認してください。ログインが必要なページには対応していません。";
+    $("urlImportErrorTitle").textContent = mode === "gemma" ? "Gemma 4でページを解析できませんでした" : (sectionError ? "レシピの材料欄を見つけられませんでした" : "ページを読み取れませんでした");
+    $("urlImportErrorDetail").textContent = mode === "gemma"
+      ? `${message} APIキーを確認するか、従来方式での取り込みをお試しください。`
+      : (sectionError ? "材料と作り方が本文に掲載されたレシピページか確認し、再読み取りしてください。" : "URLが公開されているか確認してください。ログインが必要なページには対応していません。");
+    $("fallbackUrlImport").hidden = mode === "local" || !lastUrlText;
     $("urlImportError").hidden = false;
     toast(message);
   } finally {
@@ -686,11 +733,42 @@ $("mealDateInput").addEventListener("change", (event) => {
 });
 $("photoInput").addEventListener("change", (event) => analyzePhoto(event.target.files[0]));
 $("retryOCR").addEventListener("click", () => { if (lastPhotoFile) analyzePhoto(lastPhotoFile); else $("photoInput").click(); });
+$("fallbackOCR").addEventListener("click", () => { if (lastPhotoFile) analyzePhoto(lastPhotoFile, "local"); else $("photoInput").click(); });
 $("manualFromOCRError").addEventListener("click", () => switchFormTab("manual"));
-$("importRecipeUrl").addEventListener("click", importRecipeFromUrl);
-$("retryUrlImport").addEventListener("click", importRecipeFromUrl);
+$("importRecipeUrl").addEventListener("click", () => importRecipeFromUrl());
+$("retryUrlImport").addEventListener("click", () => importRecipeFromUrl());
+$("fallbackUrlImport").addEventListener("click", () => importRecipeFromUrl("local"));
 $("manualFromUrlError").addEventListener("click", () => switchFormTab("manual"));
 $("recipeUrl").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); importRecipeFromUrl(); } });
+$("openGemmaSettings").addEventListener("click", () => openGemmaSettings());
+$("toggleGemmaKey").addEventListener("click", () => {
+  const reveal = $("gemmaApiKey").type === "password";
+  $("gemmaApiKey").type = reveal ? "text" : "password";
+  $("toggleGemmaKey").textContent = reveal ? "隠す" : "表示";
+  $("toggleGemmaKey").setAttribute("aria-pressed", String(reveal));
+});
+$("gemmaSettingsForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  try {
+    GemmaRecipe.saveApiKey($("gemmaApiKey").value, $("rememberGemmaKey").checked);
+    const action = pendingGemmaAction;
+    pendingGemmaAction = "";
+    $("gemmaSettingsDialog").close();
+    updateGemmaKeyStatus();
+    toast("Gemma 4のAPIキーを設定しました");
+    if (action === "photo" && lastPhotoFile) setTimeout(() => analyzePhoto(lastPhotoFile), 100);
+    if (action === "url") setTimeout(() => importRecipeFromUrl(), 100);
+  } catch (error) { toast(error.message); $("gemmaApiKey").focus(); }
+});
+$("clearGemmaKey").addEventListener("click", () => {
+  GemmaRecipe.clearApiKey();
+  pendingGemmaAction = "";
+  $("gemmaApiKey").value = "";
+  $("rememberGemmaKey").checked = false;
+  $("gemmaSettingsDialog").close();
+  updateGemmaKeyStatus();
+  toast("Gemma 4のAPIキー設定を削除しました");
+});
 $("dropZone").addEventListener("dragover", (event) => { event.preventDefault(); $("dropZone").classList.add("is-dragging"); });
 $("dropZone").addEventListener("dragleave", () => $("dropZone").classList.remove("is-dragging"));
 $("dropZone").addEventListener("drop", (event) => { event.preventDefault(); $("dropZone").classList.remove("is-dragging"); analyzePhoto(event.dataTransfer.files[0]); });
@@ -751,6 +829,7 @@ $("shareList").addEventListener("click", async () => {
 $("helpButton").addEventListener("click", () => toast("レシピ写真を追加するか、日付を選んで献立を作成できます"));
 $("mobileMore").addEventListener("click", () => toast("Mealnote デモ版 — データはこの端末に保存されます"));
 
+updateGemmaKeyStatus();
 renderIngredientSuggestions();
 renderRecipes();
 renderCalendar();

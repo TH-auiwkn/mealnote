@@ -188,6 +188,13 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0 26px 20px; padding: 4px; border-radius: 12px; background: var(--surface-muted); }
 .segmented button { min-height: 40px; border: 0; border-radius: 9px; color: var(--text-secondary); background: transparent; cursor: pointer; font-size: 13px; font-weight: 650; }
 .segmented button[aria-selected="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 4px rgb(0 0 0 / .09); }
+.gemma-banner { display: flex; align-items: center; gap: 10px; margin: -7px 26px 15px; padding: 10px 12px; border: 1px solid var(--separator); border-radius: 12px; background: var(--surface); }
+.gemma-mark { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); }
+.gemma-banner p { min-width: 0; flex: 1; margin: 0; }
+.gemma-banner strong, .gemma-banner small { display: block; }
+.gemma-banner strong { font-size: 12px; }
+.gemma-banner small { color: var(--text-secondary); font-size: 10px; }
+.gemma-banner.is-ready small { color: var(--accent-strong); }
 #recipeForm > section { padding: 0 26px; }
 .drop-zone { position: relative; min-height: 270px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; padding: 26px; border: 1.5px dashed var(--separator-strong); border-radius: var(--radius-md); background: var(--bg); cursor: pointer; text-align: center; }
 .drop-zone:hover, .drop-zone.is-dragging { border-color: var(--accent); background: var(--accent-soft); }
@@ -212,7 +219,7 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .ocr-error strong, .ocr-error span { display: block; }
 .ocr-error strong { font-size: 12px; }
 .ocr-error span { margin-top: 3px; color: var(--text-secondary); font-size: 10px; line-height: 1.5; }
-.ocr-error-actions { display: flex; align-items: center; gap: 8px; }
+.ocr-error-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .ocr-error-actions .secondary-button { min-height: 38px; padding: 0 14px; }
 .ocr-error-actions .text-button { min-height: 38px; }
 .spinner { width: 24px; height: 24px; flex: 0 0 auto; border: 2px solid color-mix(in srgb, var(--accent), transparent 72%); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
@@ -273,6 +280,20 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .compact-modal { width: min(100% - 32px, 520px); }
 .manager-shell { padding-bottom: 22px; }
 .manager-shell > p, .manager-shell > form, .custom-list { margin-left: 26px; margin-right: 26px; }
+.settings-shell { padding-bottom: 0; }
+.settings-shell form { display: grid; gap: 15px; }
+.settings-intro, .settings-shell form > .field, .remember-option, .settings-note, .settings-link { margin-left: 26px; margin-right: 26px; }
+.settings-intro { margin-top: 0; margin-bottom: 0; color: var(--text-secondary); font-size: 12px; }
+.secret-input { display: flex; align-items: center; gap: 8px; }
+.secret-input input { min-width: 0; flex: 1; }
+.secret-input .text-button { min-width: 44px; }
+.remember-option { min-height: 44px; display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 620; }
+.remember-option input { width: 19px; height: 19px; accent-color: var(--accent); }
+.settings-note { margin-top: -9px; margin-bottom: 0; color: var(--text-secondary); font-size: 10px; }
+.settings-link { margin-top: -4px; margin-bottom: 0; font-size: 12px; }
+.settings-link a { color: var(--accent-strong); text-underline-offset: 2px; }
+.settings-actions { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 9px; margin-top: 4px; padding: 16px 26px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--separator); }
+.destructive-text { color: var(--danger); }
 .manager-shell > p { margin-top: 0; color: var(--text-secondary); font-size: 12px; }
 .custom-list { display: flex; flex-wrap: wrap; gap: 7px; }
 .custom-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 6px 0 11px; border: 1px solid var(--separator); border-radius: 999px; font-size: 12px; }
@@ -336,12 +357,17 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
   .dialog-shell { max-height: calc(100dvh - 10px); border-radius: 24px 24px 0 0; border-bottom: 0; }
   .dialog-header { padding: 22px 18px 15px; }
   .segmented { margin-left: 18px; margin-right: 18px; }
+  .gemma-banner { margin-left: 18px; margin-right: 18px; }
   #recipeForm > section { padding: 0 18px; }
   .dialog-actions { padding-left: 18px; padding-right: 18px; }
   .dialog-actions button { flex: 1; }
   .drop-zone { min-height: 230px; }
   .picker-controls { grid-template-columns: 1fr; margin-left: 18px; margin-right: 18px; }
   .manager-shell > p, .manager-shell > form, .custom-list { margin-left: 18px; margin-right: 18px; }
+  .settings-intro, .settings-shell form > .field, .remember-option, .settings-note, .settings-link { margin-left: 18px; margin-right: 18px; }
+  .settings-actions { grid-template-columns: 1fr 1fr; padding-left: 18px; padding-right: 18px; }
+  .settings-actions > span { display: none; }
+  .settings-actions .destructive-text { grid-column: 1 / -1; justify-self: start; }
   .toast { bottom: calc(82px + env(safe-area-inset-bottom)); }
 }
 
