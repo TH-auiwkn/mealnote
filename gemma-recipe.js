@@ -9,10 +9,17 @@
     return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
   }
 
+  function cleanIngredientName(value = "") {
+    return cleanText(value)
+      .replace(/^[・•●▪︎]\s*/, "")
+      .replace(/^[【\[(]\s*[A-Z]\s*[】\])]\s*/i, "")
+      .trim();
+  }
+
   function normalizeRecipe(value, knownIngredients = []) {
     const ingredients = Array.isArray(value?.ingredients) ? value.ingredients : [];
     const normalizedIngredients = ingredients
-      .map((item) => ({ name: cleanText(item?.name), amount: cleanText(item?.amount) }))
+      .map((item) => ({ name: cleanIngredientName(item?.name), amount: cleanText(item?.amount) }))
       .filter((item) => item.name && !/^(?:材料|調味料|A|B|C)$/i.test(item.name))
       .slice(0, 120)
       .map((item) => ({ ...item, ...root.RecipeOCR.resolveIngredient(item.name, knownIngredients) }));
