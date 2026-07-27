@@ -16,13 +16,27 @@
       .trim();
   }
 
+  function normalizeIngredientGroup(value = "") {
+    return cleanText(value).toUpperCase().match(/[A-H]/)?.[0] || "";
+  }
+
   function normalizeRecipe(value, knownIngredients = []) {
     const ingredients = Array.isArray(value?.ingredients) ? value.ingredients : [];
-    const normalizedIngredients = ingredients
-      .map((item) => ({ name: cleanIngredientName(item?.name), amount: cleanText(item?.amount) }))
-      .filter((item) => item.name && !/^(?:材料|調味料|A|B|C)$/i.test(item.name))
-      .slice(0, 120)
-      .map((item) => ({ ...item, ...root.RecipeOCR.resolveIngredient(item.name, knownIngredients) }));
+    let activeGroup = "";
+    const normalizedIngredients = [];
+    ingredients.slice(0, 120).forEach((item) => {
+      const rawName = cleanText(item?.name);
+      const prefixedGroup = rawName.match(/^(?:\(|（|【|\[)\s*([A-H])\s*(?:\)|）|】|\])\s*/i)?.[1]?.toUpperCase() || "";
+      const markerGroup = rawName.match(/^(?:\(|（|【|\[)?\s*([A-H])\s*(?:\)|）|】|\])?$/i)?.[1]?.toUpperCase() || "";
+      const explicitGroup = normalizeIngredientGroup(item?.group);
+      if (explicitGroup) activeGroup = explicitGroup;
+      else if (prefixedGroup || markerGroup) activeGroup = prefixedGroup || markerGroup;
+      else if (Object.hasOwn(item || {}, "group")) activeGroup = "";
+      const name = cleanIngredientName(rawName);
+      if (!name || markerGroup || /^(?:材料|調味料)$/i.test(name)) return;
+      const normalized = { name, amount: cleanText(item?.amount), group: explicitGroup || prefixedGroup || activeGroup };
+      normalizedIngredients.push({ ...normalized, ...root.RecipeOCR.resolveIngredient(name, knownIngredients) });
+    });
     if (!normalizedIngredients.length) throw new Error("Gemma 4が材料を抽出できませんでした");
     const steps = (Array.isArray(value?.steps) ? value.steps : [])
       .map((step) => cleanText(step).replace(/^(?:手順)?\s*[0-9①-⑳]+[.)、:：\s]*/, ""))

@@ -110,22 +110,29 @@
       .trim();
   }
 
+  function ingredientGroupMarker(line = "") {
+    return normalizeLine(stripMarkup(line)).match(/^(?:\(|（|【|\[)?\s*([A-H])\s*(?:\)|）|】|\])?$/i)?.[1]?.toUpperCase() || "";
+  }
+
   function parseIngredientLine(line) {
-    const clean = normalizeLine(stripMarkup(line))
-      .replace(/^\(?[A-Z]\)?\s*/i, "")
+    const normalized = normalizeLine(stripMarkup(line));
+    const groupMatch = normalized.match(/^(?:\(|（|【|\[)\s*([A-H])\s*(?:\)|）|】|\])\s*/i);
+    const group = groupMatch?.[1]?.toUpperCase() || "";
+    const clean = normalized
+      .replace(groupMatch?.[0] || /^$/, "")
       .replace(/^(?:材料|分量)\s*/u, "")
       .trim();
     if (!clean || /^(?:[（(【\[]?[A-C][）)】\]]?|調味料)$/i.test(clean)) return null;
     const match = amountPattern.exec(clean);
     if (!match) {
       const unitOnly = clean.match(/^(.+?)(大さじ|小さじ)$/);
-      if (unitOnly) return { type: "ingredient", name: unitOnly[1].trim(), amount: unitOnly[2] };
-      return { type: "name", value: clean.replace(/[：:]$/, "").trim() };
+      if (unitOnly) return { type: "ingredient", name: unitOnly[1].trim(), amount: unitOnly[2], group };
+      return { type: "name", value: clean.replace(/[：:]$/, "").trim(), group };
     }
     const name = clean.slice(0, match.index).replace(/[：:]$/, "").trim();
     const amount = clean.slice(match.index).replace(/\s+/g, "").trim();
-    if (!name) return { type: "amount", value: amount };
-    return { type: "ingredient", name, amount };
+    if (!name) return { type: "amount", value: amount, group };
+    return { type: "ingredient", name, amount, group };
   }
 
   function isIngredientNoise(line) {
@@ -138,15 +145,22 @@
   function extractIngredients(lines, start, end, knownIngredients) {
     const output = [];
     const pendingNames = [];
+    let activeGroup = "";
     lines.slice(start, end).forEach((line) => {
+      const marker = ingredientGroupMarker(line);
+      if (marker) { activeGroup = marker; return; }
       if (isIngredientNoise(line)) return;
       const parsed = parseIngredientLine(line);
       if (!parsed) return;
-      if (parsed.type === "ingredient") output.push(parsed);
-      if (parsed.type === "name" && parsed.value.length <= 60) pendingNames.push(parsed.value);
-      if (parsed.type === "amount" && pendingNames.length) output.push({ name: pendingNames.shift(), amount: parsed.value });
+      if (parsed.group) activeGroup = parsed.group;
+      if (parsed.type === "ingredient") output.push({ ...parsed, group: parsed.group || activeGroup });
+      if (parsed.type === "name" && parsed.value.length <= 60) pendingNames.push({ name: parsed.value, group: parsed.group || activeGroup });
+      if (parsed.type === "amount" && pendingNames.length) {
+        const pending = pendingNames.shift();
+        output.push({ name: pending.name, amount: parsed.value, group: parsed.group || pending.group });
+      }
     });
-    pendingNames.forEach((name) => output.push({ name, amount: "" }));
+    pendingNames.forEach((pending) => output.push({ name: pending.name, amount: "", group: pending.group }));
     return output
       .filter((item) => item.name && !/^\d+$/.test(item.name) && !/[。！？]$/.test(item.name))
       .map((item) => ({ ...item, ...resolveIngredient(item.name, knownIngredients) }));

@@ -1,4 +1,5 @@
 const STORAGE_KEY = "mealnote-state-v1";
+const INGREDIENT_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
 const baseRecipes = [
   {
@@ -89,12 +90,26 @@ function initialState() {
   return { recipes: baseRecipes, schedule: seedSchedule, shopping: [], customIngredients: defaultIngredients };
 }
 
+function normalizeIngredientGroup(value = "") {
+  const match = String(value).normalize("NFKC").toUpperCase().match(/[A-H]/);
+  return match ? match[0] : "";
+}
+
+function normalizeRecipeGroups(recipe) {
+  return {
+    ...recipe,
+    ingredients: Array.isArray(recipe?.ingredients)
+      ? recipe.ingredients.map((item) => ({ ...item, group: normalizeIngredientGroup(item?.group) }))
+      : []
+  };
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved) return initialState();
     return {
-      recipes: Array.isArray(saved.recipes) ? saved.recipes : baseRecipes,
+      recipes: (Array.isArray(saved.recipes) ? saved.recipes : baseRecipes).map(normalizeRecipeGroups),
       schedule: saved.schedule || seedSchedule,
       shopping: Array.isArray(saved.shopping) ? saved.shopping : [],
       customIngredients: Array.isArray(saved.customIngredients) ? saved.customIngredients : defaultIngredients
@@ -229,6 +244,18 @@ function renderRecipes() {
   $("filterCount").textContent = count;
 }
 
+function renderRecipeIngredientList(ingredients = []) {
+  let previousGroup = "";
+  return ingredients.map((item) => {
+    const group = normalizeIngredientGroup(item.group);
+    const groupHeading = group && group !== previousGroup
+      ? `<li class="ingredient-group-label"><strong>（${group}）</strong></li>`
+      : "";
+    previousGroup = group;
+    return `${groupHeading}<li><span>${escapeHTML(item.name)}</span><span>${escapeHTML(item.amount)}</span></li>`;
+  }).join("");
+}
+
 function openRecipeDetail(id) {
   const recipe = state.recipes.find((item) => item.id === id);
   if (!recipe) return;
@@ -239,7 +266,7 @@ function openRecipeDetail(id) {
         <button class="primary-button" type="button" data-schedule-recipe="${escapeAttr(recipe.id)}">献立に追加</button>
         <button class="secondary-button" type="button" data-shop-recipe="${escapeAttr(recipe.id)}">材料を買い物へ</button>
       </div>
-      <section class="detail-section"><h3>材料</h3><ul class="ingredient-list">${recipe.ingredients.map((item) => `<li><span>${escapeHTML(item.name)}</span><span>${escapeHTML(item.amount)}</span></li>`).join("")}</ul></section>
+      <section class="detail-section"><h3>材料</h3><ul class="ingredient-list">${renderRecipeIngredientList(recipe.ingredients)}</ul></section>
       <section class="detail-section"><h3>作り方</h3><ol class="steps-list">${recipe.steps.map((step) => `<li>${escapeHTML(step)}</li>`).join("")}</ol></section>
     </div>`;
   $("recipeDetailDialog").showModal();
@@ -383,7 +410,7 @@ function renderBadges() {
   $("shoppingBadge").hidden = count === 0;
 }
 
-function addIngredientRow(name = "", amount = "", resolution = null) {
+function addIngredientRow(name = "", amount = "", resolution = null, group = resolution?.group || "") {
   ingredientRowId += 1;
   const row = document.createElement("div");
   row.className = "ingredient-row";
@@ -393,7 +420,9 @@ function addIngredientRow(name = "", amount = "", resolution = null) {
   if (resolution?.resolution === "existing") resolutionLabel = "既存の材料";
   if (resolution?.resolution === "matched") resolutionLabel = `「${resolution.originalName}」を「${name}」に統合`;
   if (resolution?.resolution === "new") resolutionLabel = "新しい材料として保存時に登録";
-  row.innerHTML = `<label><span class="sr-only">材料名</span><input class="ingredient-name" list="ingredientSuggestions" placeholder="材料名" value="${escapeAttr(name)}">${resolutionLabel ? `<small class="ingredient-resolution${resolution.resolution === "new" ? " is-new" : ""}">${escapeHTML(resolutionLabel)}</small>` : ""}</label><label><span class="sr-only">分量</span><input class="ingredient-amount" placeholder="分量" value="${escapeAttr(amount)}"></label><button type="button" data-remove-row aria-label="この材料を削除">×</button>`;
+  const normalizedGroup = normalizeIngredientGroup(group);
+  const groupOptions = [`<option value="">なし</option>`, ...INGREDIENT_GROUPS.map((value) => `<option value="${value}"${value === normalizedGroup ? " selected" : ""}>（${value}）</option>`)].join("");
+  row.innerHTML = `<label class="ingredient-group-field"><span class="sr-only">材料グループ</span><select class="ingredient-group" aria-label="材料グループ">${groupOptions}</select></label><label><span class="sr-only">材料名</span><input class="ingredient-name" list="ingredientSuggestions" placeholder="材料名" value="${escapeAttr(name)}">${resolutionLabel ? `<small class="ingredient-resolution${resolution.resolution === "new" ? " is-new" : ""}">${escapeHTML(resolutionLabel)}</small>` : ""}</label><label><span class="sr-only">分量</span><input class="ingredient-amount" placeholder="分量" value="${escapeAttr(amount)}"></label><button type="button" data-remove-row aria-label="この材料を削除">×</button>`;
   $("ingredientRows").append(row);
 }
 
@@ -470,17 +499,19 @@ function applyRecipeSuggestion(suggestion, sourceLabel) {
   $("recipeTime").value = suggestion.time;
   $("recipeServings").value = suggestion.servings;
   $("ingredientRows").innerHTML = "";
-  suggestion.ingredients.forEach((ingredient) => addIngredientRow(ingredient.name, ingredient.amount, ingredient));
+  suggestion.ingredients.forEach((ingredient) => addIngredientRow(ingredient.name, ingredient.amount, ingredient, ingredient.group));
   $("stepRows").innerHTML = "";
   if (suggestion.steps.length) suggestion.steps.forEach((step) => addStepRow(step));
   else addStepRow();
   const newCount = suggestion.ingredients.filter((ingredient) => ingredient.resolution === "new").length;
   const matchedCount = suggestion.ingredients.filter((ingredient) => ingredient.resolution === "matched").length;
   const withoutAmount = suggestion.ingredients.filter((ingredient) => !ingredient.amount).length;
+  const groupedCount = suggestion.ingredients.filter((ingredient) => normalizeIngredientGroup(ingredient.group)).length;
   $("aiNoticeTitle").textContent = `${sourceLabel}から${suggestion.ingredients.length}件の材料と${suggestion.steps.length}件の手順を抽出しました`;
   $("aiNoticeDetail").textContent = [
     newCount ? `未登録の${newCount}件は保存時に材料リストへ追加します。` : "",
     matchedCount ? `近い既存材料へ${matchedCount}件を統合しました。` : "",
+    groupedCount ? `（A）（B）などのグループを${groupedCount}件に反映しました。` : "",
     withoutAmount ? `分量が見つからない${withoutAmount}件は確認してください。` : "",
     "保存前に内容を確認してください。"
   ].filter(Boolean).join(" ");
@@ -628,6 +659,7 @@ function submitRecipe(event) {
   const ingredients = [...document.querySelectorAll(".ingredient-row")].map((row) => ({
     name: row.querySelector(".ingredient-name").value.trim(),
     amount: row.querySelector(".ingredient-amount").value.trim(),
+    group: normalizeIngredientGroup(row.querySelector(".ingredient-group").value),
   })).filter((item) => item.name).map((item) => ({ ...item, category: categorize(item.name) }));
   if (!$("recipeName").value.trim() || ingredients.length === 0) { toast("料理名と材料を入力してください"); return; }
   const id = `recipe-${Date.now()}`;

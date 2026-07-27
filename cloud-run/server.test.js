@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createApp, normalizeGeneratedRecipe, normalizeUrl, parseRecipeText, sourceExcerpt } from "./server.js";
 
-const recipe = { name: "テスト料理", time: 10, servings: 2, ingredients: [{ name: "卵", amount: "2個" }], steps: ["焼く。"] };
+const recipe = { name: "テスト料理", time: 10, servings: 2, ingredients: [{ name: "卵", amount: "2個", group: "A" }], steps: ["焼く。"] };
 
 async function startApp(options = {}) {
   const app = createApp({ extractRecipe: async () => recipe, fetchRecipe: async () => "材料\n卵 2個\n作り方\n焼く。", ...options });
@@ -17,9 +17,9 @@ test("URLとJSON応答を正規化できる", () => {
   assert.deepEqual(parseRecipeText("```json\n{\"name\":\"料理\"}\n```"), { name: "料理" });
   assert.deepEqual(normalizeGeneratedRecipe({
     title: "料理",
-    ingredients: [{ item: "卵", amount: "2個" }],
+    ingredients: [{ item: "【A】", amount: "", group: "" }, { item: "卵", amount: "2個" }],
     instructions: ["1 焼く。"]
-  }), { name: "料理", time: 20, servings: 2, ingredients: [{ name: "卵", amount: "2個" }], steps: ["1 焼く。"] });
+  }), { name: "料理", time: 20, servings: 2, ingredients: [{ name: "卵", amount: "2個", group: "A" }], steps: ["1 焼く。"] });
   assert.match(sourceExcerpt(`${"前".repeat(8000)}\n材料\n卵`), /材料/);
 });
 
