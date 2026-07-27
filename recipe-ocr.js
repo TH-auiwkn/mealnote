@@ -27,6 +27,7 @@
       .replace(/大さ\s*じ/g, "大さじ")
       .replace(/小さ\s*じ/g, "小さじ")
       .replace(/青じ\s*そ/g, "青じそ")
+      .replace(/粗びぴき/g, "粗びき")
       .replace(/一\s*口/g, "一口");
   }
 
@@ -100,6 +101,7 @@
       .replace(/^\s*#{1,6}\s*/, "")
       .replace(/^\s*>\s?/, "")
       .replace(/^\s*[*+-]\s+/, "")
+      .replace(/^\s*[・･●]\s*/, "")
       .replace(/^\s*\|?|\|?\s*$/g, "")
       .replace(/\s*\|\s*/g, " ")
       .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
@@ -115,7 +117,11 @@
       .trim();
     if (!clean || /^(?:[（(【\[]?[A-C][）)】\]]?|調味料)$/i.test(clean)) return null;
     const match = amountPattern.exec(clean);
-    if (!match) return { type: "name", value: clean.replace(/[：:]$/, "").trim() };
+    if (!match) {
+      const unitOnly = clean.match(/^(.+?)(大さじ|小さじ)$/);
+      if (unitOnly) return { type: "ingredient", name: unitOnly[1].trim(), amount: unitOnly[2] };
+      return { type: "name", value: clean.replace(/[：:]$/, "").trim() };
+    }
     const name = clean.slice(0, match.index).replace(/[：:]$/, "").trim();
     const amount = clean.slice(match.index).replace(/\s+/g, "").trim();
     if (!name) return { type: "amount", value: amount };
@@ -125,6 +131,7 @@
   function isIngredientNoise(line) {
     return !line
       || /^(?:材料|分量|[（(【\[]?[A-Z][）)】\]]?|つくり方|作り方)$/i.test(line)
+      || /^[0-9]+\s*[〜ー~-]\s*[0-9]+\s*人分[）)]?$/.test(line)
       || /(?:栄養|エネルギー|たんぱく質|食物繊維|塩分|糖質|野菜量|レシピ登録|登録済|kcal|ホームクッキング)/i.test(line);
   }
 
@@ -168,7 +175,10 @@
       if (hasNumbers) current = `${current}${current ? " " : ""}${line}`.trim();
     });
     if (current.trim()) steps.push(current.trim());
-    if (steps.length) return steps.map(normalizeLine).filter((step) => step.length >= 4);
+    if (steps.length) return steps.map(normalizeLine).map((step) => step
+      .replace(/^(?:©|@|の|\([の©@])[）)]\s*/, "")
+      .replace(/^\(2のフライパン/, "2のフライパン"))
+      .filter((step) => step.length >= 4);
 
     const paragraphs = [];
     let paragraph = [];
@@ -281,20 +291,36 @@
     return libraryPromise;
   }
 
-  function findStepRegionTop(tsv = "") {
+  function findRecipeRegions(tsv = "", size = { width: 0, height: 0 }) {
     const groups = new Map();
     String(tsv).split(/\r?\n/).slice(1).forEach((row) => {
       const columns = row.split("\t");
       if (columns.length < 12 || !columns[11]?.trim()) return;
       const key = columns.slice(1, 5).join(":");
-      const entry = groups.get(key) || { text: "", top: Number(columns[7]) || 0, height: Number(columns[9]) || 0 };
+      const entry = groups.get(key) || { text: "", left: Number(columns[6]) || 0, top: Number(columns[7]) || 0, width: Number(columns[8]) || 0, height: Number(columns[9]) || 0 };
       entry.text += columns[11].trim();
+      entry.left = Math.min(entry.left, Number(columns[6]) || entry.left);
       entry.top = Math.min(entry.top, Number(columns[7]) || entry.top);
+      entry.width = Math.max(entry.width, (Number(columns[6]) || 0) + (Number(columns[8]) || 0) - entry.left);
       entry.height = Math.max(entry.height, Number(columns[9]) || 0);
       groups.set(key, entry);
     });
-    const heading = [...groups.values()].find((entry) => /つくり方|作り方/.test(normalizeLine(entry.text)));
-    return heading ? Math.max(0, heading.top - Math.round(heading.height * .5)) : null;
+    const entries = [...groups.values()];
+    const material = entries.find((entry) => /^材料(?:$|[（(])/.test(normalizeLine(entry.text)));
+    const steps = entries.find((entry) => /^(?:つくり方|作り方)/.test(normalizeLine(entry.text)));
+    if (!steps) return { stepTop: null, columns: null };
+    const top = Math.max(0, Math.min(material?.top ?? steps.top, steps.top) - Math.round(steps.height * .6));
+    const isTwoColumn = material && size.width && steps.left > size.width * .25 && material.left < size.width * .2;
+    if (!isTwoColumn) return { stepTop: Math.max(0, steps.top - Math.round(steps.height * .5)), columns: null };
+    const gutter = Math.max(8, Math.round(size.width * .012));
+    const rightLeft = Math.max(0, steps.left - gutter);
+    return {
+      stepTop: top,
+      columns: {
+        materials: { top, left: 0, width: Math.max(80, rightLeft - gutter), height: size.height - top },
+        steps: { top, left: rightLeft, width: size.width - rightLeft, height: size.height - top }
+      }
+    };
   }
 
   async function imageSize(file) {
@@ -324,7 +350,7 @@
       logger(message) {
         const progress = Number(message.progress) || 0;
         const overallProgress = message.status === "recognizing text"
-          ? (phase === "steps" ? .72 + progress * .28 : progress * .72)
+          ? (phase === "steps" ? .76 + progress * .24 : phase === "materials" ? .56 + progress * .2 : progress * .56)
           : 0;
         onProgress({ status: message.status || "recognizing text", progress, overallProgress, phase });
       }
@@ -333,7 +359,16 @@
       await worker.setParameters({ tessedit_pageseg_mode: "3", preserve_interword_spaces: "1", user_defined_dpi: "300" });
       const result = await worker.recognize(file, {}, { text: true, tsv: true });
       const size = await imageSize(file);
-      const detectedStepTop = findStepRegionTop(result.data.tsv);
+      const regions = findRecipeRegions(result.data.tsv, size);
+      if (regions.columns) {
+        phase = "materials";
+        await worker.setParameters({ tessedit_pageseg_mode: "4", preserve_interword_spaces: "1" });
+        const materialResult = await worker.recognize(file, { rectangle: regions.columns.materials });
+        phase = "steps";
+        const stepResult = await worker.recognize(file, { rectangle: regions.columns.steps });
+        return `${materialResult.data.text || ""}\n${STEP_REGION_MARKER}\n${stepResult.data.text || ""}`;
+      }
+      const detectedStepTop = regions.stepTop;
       const stepTop = detectedStepTop ?? (/つくり方|作り方/.test(normalizeLine(result.data.text)) ? Math.round(size.height * .65) : null);
       if (stepTop === null || stepTop >= size.height - 80) return result.data.text || "";
       phase = "steps";
