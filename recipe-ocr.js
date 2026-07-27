@@ -1,7 +1,10 @@
 (function initializeRecipeOCR(root) {
   "use strict";
 
-  const TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
+  const TESSERACT_URLS = [
+    "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js",
+    "https://unpkg.com/tesseract.js@7.0.0/dist/tesseract.min.js"
+  ];
   const STEP_REGION_MARKER = "__MEALNOTE_STEP_REGION__";
   let libraryPromise = null;
 
@@ -13,6 +16,18 @@
       .replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])\s+(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu, "$1")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function correctOCRText(value = "") {
+    return String(value)
+      .normalize("NFKC")
+      .replace(/フライ(?:パバ|バ|パパ)ン/g, "フライパン")
+      .replace(/だししようゆ/g, "だししょうゆ")
+      .replace(/しようゆ/g, "しょうゆ")
+      .replace(/大さ\s*じ/g, "大さじ")
+      .replace(/小さ\s*じ/g, "小さじ")
+      .replace(/青じ\s*そ/g, "青じそ")
+      .replace(/一\s*口/g, "一口");
   }
 
   function normalizeKey(value = "") {
@@ -78,14 +93,27 @@
     return { name: originalName, originalName, resolution: "new", score: nearest?.score || 0 };
   }
 
-  const amountPattern = /(?:大さじ|小さじ)\s*[0-9]+(?:[./][0-9]+)?|[0-9]+(?:[./][0-9]+)?\s*(?:kg|g|mg|ml|mL|L|個|本|枚|片|切れ|束|パック|袋|缶|合|カップ|玉|丁)(?:\s*[（(][^）)]+[）)])?|適量|少々|ひとつまみ/i;
+  const amountPattern = /(?:大さじ|小さじ)\s*[0-9]+(?:[./][0-9]+)?|[0-9]+(?:[./][0-9]+)?(?:\s*[〜~-]\s*[0-9]+(?:[./][0-9]+)?)?\s*(?:kg|g|mg|ml|mL|L|個|コ|本|枚|片|かけ|切れ|束|パック|袋|缶|合|カップ|玉|丁)(?:\s*[（(][^）)]+[）)])?|適量|少々|ひとつまみ|たっぷり/i;
+
+  function stripMarkup(line = "") {
+    return String(line)
+      .replace(/^\s*#{1,6}\s*/, "")
+      .replace(/^\s*>\s?/, "")
+      .replace(/^\s*[*+-]\s+/, "")
+      .replace(/^\s*\|?|\|?\s*$/g, "")
+      .replace(/\s*\|\s*/g, " ")
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/[*_`]/g, "")
+      .trim();
+  }
 
   function parseIngredientLine(line) {
-    const clean = normalizeLine(line)
+    const clean = normalizeLine(stripMarkup(line))
       .replace(/^\(?[A-Z]\)?\s*/i, "")
       .replace(/^(?:材料|分量)\s*/u, "")
       .trim();
-    if (!clean || /^(?:A|B|C|調味料)$/i.test(clean)) return null;
+    if (!clean || /^(?:[（(【\[]?[A-C][）)】\]]?|調味料)$/i.test(clean)) return null;
     const match = amountPattern.exec(clean);
     if (!match) return { type: "name", value: clean.replace(/[：:]$/, "").trim() };
     const name = clean.slice(0, match.index).replace(/[：:]$/, "").trim();
@@ -96,7 +124,7 @@
 
   function isIngredientNoise(line) {
     return !line
-      || /^(?:材料|分量|\(?[A-Z]\)?|つくり方|作り方)$/i.test(line)
+      || /^(?:材料|分量|[（(【\[]?[A-Z][）)】\]]?|つくり方|作り方)$/i.test(line)
       || /(?:栄養|エネルギー|たんぱく質|食物繊維|塩分|糖質|野菜量|レシピ登録|登録済|kcal|ホームクッキング)/i.test(line);
   }
 
@@ -111,8 +139,9 @@
       if (parsed.type === "name" && parsed.value.length <= 60) pendingNames.push(parsed.value);
       if (parsed.type === "amount" && pendingNames.length) output.push({ name: pendingNames.shift(), amount: parsed.value });
     });
+    pendingNames.forEach((name) => output.push({ name, amount: "" }));
     return output
-      .filter((item) => item.name && item.amount && !/^\d+$/.test(item.name))
+      .filter((item) => item.name && !/^\d+$/.test(item.name) && !/[。！？]$/.test(item.name))
       .map((item) => ({ ...item, ...resolveIngredient(item.name, knownIngredients) }));
   }
 
@@ -120,12 +149,19 @@
     const steps = [];
     let current = "";
     let hasNumbers = false;
-    lines.slice(start).forEach((line) => {
-      if (!line || /(?:関連レシピ|レシピを探す|キッコーマンホームクッキング)/.test(line)) return;
-      const numbered = line.match(/^([1-9])(?:[.)、:：\s]*)?(.*)$/);
+    const candidates = lines.slice(start);
+    const endIndex = candidates.findIndex((line) => /^(?:関連レシピ|レシピを探す|タグから探す|キッコーマンホームクッキング編集担当|キッコーマン公式レシピアプリ|レシピをシェアする|Image \d+.*ホームクッキング)/.test(line));
+    const stepLines = endIndex >= 0 ? candidates.slice(0, endIndex) : candidates;
+    stepLines.forEach((line) => {
+      if (!line) return;
+      const cleanLine = stripMarkup(line);
+      const numbered = cleanLine.match(/^([1-9][0-9]?)(?:[.)、:：]\s*|\s+)(.*)$/)
+        || cleanLine.match(/^([①②③④⑤⑥⑦⑧⑨⑩])\s*(.*)$/);
       if (numbered) {
         if (current.trim()) steps.push(current.trim());
-        current = numbered[2].trim();
+        const marker = numbered[1] || "";
+        const body = numbered[2].trim().replace(new RegExp(`^${marker}\\s+`), "");
+        current = body === marker ? "" : body;
         hasNumbers = true;
         return;
       }
@@ -136,7 +172,7 @@
 
     const paragraphs = [];
     let paragraph = [];
-    lines.slice(start).forEach((line) => {
+    stepLines.forEach((line) => {
       if (!line) {
         if (paragraph.length) paragraphs.push(normalizeLine(paragraph.join(" ")));
         paragraph = [];
@@ -155,21 +191,33 @@
       .replace(/のレシピ[・･]つくり方.*$/u, "")
       .replace(/\s+-\s+(?:キッコーマン|ホームクッキング|\[?www\.).*$/i, "")
       .trim();
+    if (/^スクリーンショット(?:\s|$)/.test(value)) return "";
     return value.length >= 4 && value.length <= 80 ? value : "";
   }
 
   function titleFromLines(lines, materialIndex) {
     const candidates = lines.slice(0, Math.max(1, materialIndex)).filter((line) =>
       line.length >= 6 && line.length <= 80
+      && !/^材料(?:\s|[（(]|$)/.test(line)
       && !/(?:調理時間|エネルギー|塩分|たんぱく質|脂質|食物繊維|糖質|野菜量|登録|レシピ|kcal|タグ)/i.test(line)
       && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(line)
     );
     return candidates[0] || "写真から読み取ったレシピ";
   }
 
+  function titleFromSource(text = "") {
+    const titleLine = String(text).match(/^Title:\s*(.+)$/mi)?.[1]
+      || String(text).match(/^#\s+(.+)$/m)?.[1]
+      || "";
+    return normalizeLine(stripMarkup(titleLine))
+      .replace(/のレシピ[・･]つくり方.*$/u, "")
+      .replace(/\s*[|｜].*$/, "")
+      .trim();
+  }
+
   function parse(text, fileName = "", knownIngredients = []) {
-    const [mainText, stepRegionText = ""] = String(text || "").split(STEP_REGION_MARKER);
-    const lines = mainText.split(/\r?\n/).map(normalizeLine).filter(Boolean);
+    const [mainText, stepRegionText = ""] = correctOCRText(text).split(STEP_REGION_MARKER);
+    const lines = mainText.split(/\r?\n/).map((line) => normalizeLine(stripMarkup(line))).filter(Boolean);
     const materialIndex = lines.findIndex((line) => /^材料(?:\s|[（(]|$)/.test(line) || /材料.*[0-9]+人分/.test(line));
     const stepIndex = lines.findIndex((line, index) => index > materialIndex && /^(?:つくり方|作り方)/.test(line));
     const materialStart = materialIndex >= 0 ? materialIndex + 1 : 0;
@@ -177,14 +225,14 @@
     const ingredients = extractIngredients(lines, materialStart, materialEnd, knownIngredients);
     const stepRegionLines = stepRegionText.split(/\r?\n/).map(normalizeLine);
     const stepRegionHeading = stepRegionLines.findIndex((line) => /^(?:つくり方|作り方)/.test(line));
-    const steps = stepRegionLines.length
+    const steps = stepRegionText.trim()
       ? extractSteps(stepRegionLines, stepRegionHeading >= 0 ? stepRegionHeading + 1 : 0)
       : (stepIndex >= 0 ? extractSteps(lines, stepIndex + 1) : []);
     const preMaterials = lines.slice(0, materialIndex >= 0 ? materialIndex + 1 : Math.min(lines.length, 30)).join(" ");
     const timeMatch = preMaterials.match(/(?:調理時間\s*)?([0-9]{1,3})\s*分/);
-    const servingsMatch = (materialIndex >= 0 ? lines[materialIndex] : preMaterials).match(/([0-9]+)\s*人分/);
+    const servingsMatch = (materialIndex >= 0 ? lines[materialIndex] : preMaterials).match(/([0-9]+)(?:\s*[〜~-]\s*[0-9]+)?\s*人分/);
     return {
-      name: titleFromFilename(fileName) || titleFromLines(lines, materialIndex),
+      name: titleFromFilename(fileName) || titleFromSource(mainText) || titleFromLines(lines, materialIndex),
       time: timeMatch ? Number(timeMatch[1]) : 20,
       servings: servingsMatch ? Number(servingsMatch[1]) : 2,
       ingredients,
@@ -193,18 +241,43 @@
     };
   }
 
+  function parseWebPage(text, pageUrl = "", knownIngredients = []) {
+    const value = String(text || "");
+    if (!/(?:^|\n)\s*#{0,6}\s*材料(?:\s|[（(]|$)/m.test(value)) throw new Error("材料欄が見つかりませんでした");
+    const result = parse(value, "", knownIngredients);
+    if (!result.ingredients.length) throw new Error("材料を抽出できませんでした");
+    return { ...result, sourceUrl: pageUrl };
+  }
+
+  function loadScript(url) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      const timeout = setTimeout(() => {
+        script.remove();
+        reject(new Error("OCRライブラリの読み込みがタイムアウトしました"));
+      }, 20000);
+      script.src = url;
+      script.crossOrigin = "anonymous";
+      script.onload = () => { clearTimeout(timeout); resolve(root.Tesseract); };
+      script.onerror = () => { clearTimeout(timeout); script.remove(); reject(new Error("OCRライブラリを読み込めませんでした")); };
+      document.head.append(script);
+    });
+  }
+
   function loadTesseract() {
     if (root.Tesseract) return Promise.resolve(root.Tesseract);
     if (libraryPromise) return libraryPromise;
     if (typeof document === "undefined") return Promise.reject(new Error("OCR is available only in a browser"));
-    libraryPromise = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = TESSERACT_URL;
-      script.crossOrigin = "anonymous";
-      script.onload = () => resolve(root.Tesseract);
-      script.onerror = () => reject(new Error("OCRライブラリを読み込めませんでした"));
-      document.head.append(script);
-    });
+    libraryPromise = (async () => {
+      let lastError = null;
+      for (const url of TESSERACT_URLS) {
+        try {
+          const library = await loadScript(url);
+          if (library) return library;
+        } catch (error) { lastError = error; }
+      }
+      throw lastError || new Error("OCRライブラリを読み込めませんでした");
+    })().catch((error) => { libraryPromise = null; throw error; });
     return libraryPromise;
   }
 
@@ -273,5 +346,5 @@
     }
   }
 
-  root.RecipeOCR = { normalizeKey, parse, recognize, resolveIngredient };
+  root.RecipeOCR = { correctOCRText, normalizeKey, parse, parseWebPage, recognize, resolveIngredient };
 }(typeof globalThis !== "undefined" ? globalThis : window));

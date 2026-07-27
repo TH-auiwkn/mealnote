@@ -185,7 +185,7 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .steps-list { margin: 0; padding: 0; list-style: none; counter-reset: step; }
 .steps-list li { position: relative; min-height: 38px; margin-bottom: 14px; padding-left: 38px; font-size: 14px; }
 .steps-list li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: -2px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); font-size: 12px; font-weight: 750; }
-.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 26px 20px; padding: 4px; border-radius: 12px; background: var(--surface-muted); }
+.segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0 26px 20px; padding: 4px; border-radius: 12px; background: var(--surface-muted); }
 .segmented button { min-height: 40px; border: 0; border-radius: 9px; color: var(--text-secondary); background: transparent; cursor: pointer; font-size: 13px; font-weight: 650; }
 .segmented button[aria-selected="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 4px rgb(0 0 0 / .09); }
 #recipeForm > section { padding: 0 26px; }
@@ -208,10 +208,25 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .analysis-status progress::-webkit-progress-bar { background: color-mix(in srgb, var(--accent), transparent 84%); }
 .analysis-status progress::-webkit-progress-value { border-radius: 999px; background: var(--accent); }
 .analysis-status progress::-moz-progress-bar { border-radius: 999px; background: var(--accent); }
+.ocr-error { display: grid; gap: 12px; margin-top: 13px; padding: 14px; border: 1px solid color-mix(in srgb, var(--danger), transparent 68%); border-radius: 12px; background: color-mix(in srgb, var(--danger), transparent 94%); }
+.ocr-error strong, .ocr-error span { display: block; }
+.ocr-error strong { font-size: 12px; }
+.ocr-error span { margin-top: 3px; color: var(--text-secondary); font-size: 10px; line-height: 1.5; }
+.ocr-error-actions { display: flex; align-items: center; gap: 8px; }
+.ocr-error-actions .secondary-button { min-height: 38px; padding: 0 14px; }
+.ocr-error-actions .text-button { min-height: 38px; }
 .spinner { width: 24px; height: 24px; flex: 0 0 auto; border: 2px solid color-mix(in srgb, var(--accent), transparent 72%); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .privacy-note { display: flex; align-items: center; gap: 7px; margin: 12px 2px 0; color: var(--text-secondary); font-size: 10px; }
 .privacy-note svg { width: 15px; }
+.privacy-note a { color: var(--accent-strong); text-underline-offset: 2px; }
+.url-import-panel { display: grid; gap: 16px; min-height: 270px; align-content: center; padding: 28px; border: 1px solid var(--separator); border-radius: var(--radius-md); background: var(--bg); }
+.url-import-heading { display: flex; align-items: flex-start; gap: 13px; }
+.url-import-heading h3 { margin: 1px 0 3px; font-size: 16px; }
+.url-import-heading p { margin: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
+.url-icon { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: var(--accent); background: var(--accent-soft); }
+.url-icon svg { width: 22px; }
+.url-import-button { justify-self: start; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .field { display: grid; gap: 6px; }
 .field.full { grid-column: 1 / -1; }

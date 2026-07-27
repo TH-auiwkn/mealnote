@@ -7,8 +7,8 @@
     <meta name="description" content="レシピ、献立、買い物をひとつにつなぐ献立管理アプリ Mealnote" />
     <title>Mealnote — 献立が、すっと決まる。</title>
     <link rel="stylesheet" href="styles.css" />
-    <script src="recipe-ocr.js?v=7" defer></script>
-    <script src="app.js?v=7" defer></script>
+    <script src="recipe-ocr.js?v=8" defer></script>
+    <script src="app.js?v=8" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">メインコンテンツへ</a>
@@ -133,11 +133,12 @@
       <div class="dialog-shell form-shell">
         <header class="dialog-header"><div><p class="eyebrow">NEW RECIPE</p><h2 id="formTitle">レシピを追加</h2></div><button class="icon-button" type="button" data-close aria-label="閉じる"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
         <div class="segmented" role="tablist" aria-label="登録方法">
-          <button type="button" role="tab" aria-selected="true" data-form-tab="photo">写真から読み取る</button>
-          <button type="button" role="tab" aria-selected="false" data-form-tab="manual">手入力する</button>
+          <button id="photoFormTab" type="button" role="tab" aria-selected="true" aria-controls="photoFormPanel" tabindex="0" data-form-tab="photo">写真から読み取る</button>
+          <button id="urlFormTab" type="button" role="tab" aria-selected="false" aria-controls="urlFormPanel" tabindex="-1" data-form-tab="url">URLから取り込む</button>
+          <button id="manualFormTab" type="button" role="tab" aria-selected="false" aria-controls="manualFormPanel" tabindex="-1" data-form-tab="manual">手入力する</button>
         </div>
         <form id="recipeForm">
-          <section id="photoFormPanel" role="tabpanel">
+          <section id="photoFormPanel" role="tabpanel" aria-labelledby="photoFormTab">
             <label class="drop-zone" id="dropZone">
               <input id="photoInput" type="file" accept="image/*" />
               <span class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5h14v-5"/></svg></span>
@@ -145,9 +146,20 @@
               <img id="photoPreview" alt="選択した料理写真のプレビュー" hidden />
             </label>
             <div class="analysis-status" id="analysisStatus" hidden role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><div><strong id="analysisStatusTitle">写真を読み取っています…</strong><span id="analysisStatusDetail">文字認識を準備しています</span><progress id="analysisProgress" max="100" value="0" aria-label="画像の読み取り進捗"></progress></div></div>
+            <div class="ocr-error" id="ocrError" hidden role="alert"><div><strong id="ocrErrorTitle">画像を読み取れませんでした</strong><span id="ocrErrorDetail">通信環境を確認して、もう一度お試しください。</span></div><div class="ocr-error-actions"><button class="secondary-button" id="retryOCR" type="button">再読み取り</button><button class="text-button" id="manualFromOCRError" type="button">手入力する</button></div></div>
             <p class="privacy-note"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>画像は端末内で処理します。初回のみ文字認識モデルをダウンロードします。</p>
           </section>
-          <section id="manualFormPanel" role="tabpanel" hidden>
+          <section id="urlFormPanel" role="tabpanel" aria-labelledby="urlFormTab" hidden>
+            <div class="url-import-panel">
+              <div class="url-import-heading"><span class="url-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg></span><div><h3>レシピページから取り込む</h3><p>材料と作り方が掲載された公開ページのURLを入力してください。</p></div></div>
+              <label class="field full"><span>WebサイトのURL</span><input id="recipeUrl" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com/recipe" /></label>
+              <button class="primary-button url-import-button" id="importRecipeUrl" type="button">URLから読み取る</button>
+              <div class="analysis-status" id="urlImportStatus" hidden role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><div><strong id="urlImportStatusTitle">ページを読み取っています…</strong><span id="urlImportStatusDetail">材料と作り方を探しています</span></div></div>
+              <div class="ocr-error" id="urlImportError" hidden role="alert"><div><strong id="urlImportErrorTitle">ページを読み取れませんでした</strong><span id="urlImportErrorDetail">URLとページの公開状態を確認してください。</span></div><div class="ocr-error-actions"><button class="secondary-button" id="retryUrlImport" type="button">再読み取り</button><button class="text-button" id="manualFromUrlError" type="button">手入力する</button></div></div>
+            </div>
+            <p class="privacy-note"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>公開URLのみ対応しています。ページ取得のため、入力したURLを<a href="https://jina.ai/reader/" target="_blank" rel="noreferrer">Jina Reader</a>へ送信します。</p>
+          </section>
+          <section id="manualFormPanel" role="tabpanel" aria-labelledby="manualFormTab" hidden>
             <div class="form-grid">
               <label class="field full"><span>料理名 <b>必須</b></span><input id="recipeName" name="name" required placeholder="例：鮭の照り焼き" /></label>
               <label class="field"><span>調理時間</span><div class="unit-input"><input id="recipeTime" name="time" type="number" min="1" value="20" /><em>分</em></div></label>

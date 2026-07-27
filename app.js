@@ -108,6 +108,9 @@ let activeTags = new Set();
 let calendarDate = new Date(today.getFullYear(), today.getMonth(), 1);
 let selectedMealDate = iso(today);
 let pendingImage = "";
+let lastPhotoFile = null;
+let ocrInProgress = false;
+let urlImportInProgress = false;
 let ingredientRowId = 0;
 let stepRowId = 0;
 
@@ -418,17 +421,60 @@ function resetRecipeForm() {
   $("photoPreview").hidden = true;
   $("dropZone").classList.remove("has-image");
   $("analysisStatus").hidden = true;
+  $("ocrError").hidden = true;
+  $("urlImportStatus").hidden = true;
+  $("urlImportError").hidden = true;
   $("aiNotice").hidden = true;
   pendingImage = "";
+  lastPhotoFile = null;
+  ocrInProgress = false;
+  urlImportInProgress = false;
+  $("photoInput").disabled = false;
+  $("importRecipeUrl").disabled = false;
   switchFormTab("photo");
   validateRecipeForm();
 }
 
 function switchFormTab(tab) {
-  document.querySelectorAll("[data-form-tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.formTab === tab)));
+  document.querySelectorAll("[data-form-tab]").forEach((button) => {
+    const selected = button.dataset.formTab === tab;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
   $("photoFormPanel").hidden = tab !== "photo";
+  $("urlFormPanel").hidden = tab !== "url";
   $("manualFormPanel").hidden = tab !== "manual";
   validateRecipeForm();
+}
+
+function knownIngredientNames() {
+  return [...new Set([
+    ...state.customIngredients,
+    ...state.recipes.flatMap((recipe) => recipe.ingredients.map((ingredient) => ingredient.name))
+  ])];
+}
+
+function applyRecipeSuggestion(suggestion, sourceLabel) {
+  $("recipeName").value = suggestion.name;
+  $("recipeTime").value = suggestion.time;
+  $("recipeServings").value = suggestion.servings;
+  $("ingredientRows").innerHTML = "";
+  suggestion.ingredients.forEach((ingredient) => addIngredientRow(ingredient.name, ingredient.amount, ingredient));
+  $("stepRows").innerHTML = "";
+  if (suggestion.steps.length) suggestion.steps.forEach((step) => addStepRow(step));
+  else addStepRow();
+  const newCount = suggestion.ingredients.filter((ingredient) => ingredient.resolution === "new").length;
+  const matchedCount = suggestion.ingredients.filter((ingredient) => ingredient.resolution === "matched").length;
+  const withoutAmount = suggestion.ingredients.filter((ingredient) => !ingredient.amount).length;
+  $("aiNoticeTitle").textContent = `${sourceLabel}から${suggestion.ingredients.length}件の材料と${suggestion.steps.length}件の手順を抽出しました`;
+  $("aiNoticeDetail").textContent = [
+    newCount ? `未登録の${newCount}件は保存時に材料リストへ追加します。` : "",
+    matchedCount ? `近い既存材料へ${matchedCount}件を統合しました。` : "",
+    withoutAmount ? `分量が見つからない${withoutAmount}件は確認してください。` : "",
+    "保存前に内容を確認してください。"
+  ].filter(Boolean).join(" ");
+  $("aiNotice").hidden = false;
+  switchFormTab("manual");
 }
 
 function validateRecipeForm() {
@@ -452,12 +498,17 @@ async function compressImage(file) {
 async function analyzePhoto(file) {
   if (!file || !file.type.startsWith("image/")) { toast("画像ファイルを選択してください"); return; }
   if (file.size > 10 * 1024 * 1024) { toast("10MB以下の画像を選択してください"); return; }
+  if (ocrInProgress) return;
+  lastPhotoFile = file;
+  ocrInProgress = true;
+  $("photoInput").disabled = true;
   try {
     pendingImage = await compressImage(file);
     $("photoPreview").src = pendingImage;
     $("photoPreview").hidden = false;
     $("dropZone").classList.add("has-image");
     $("analysisStatus").hidden = false;
+    $("ocrError").hidden = true;
     $("analysisStatusTitle").textContent = "文字認識を準備しています…";
     $("analysisStatusDetail").textContent = "初回は認識モデルの準備に少し時間がかかります";
     $("analysisProgress").value = 0;
@@ -467,35 +518,75 @@ async function analyzePhoto(file) {
       $("analysisStatusDetail").textContent = recognizing ? `${phase === "steps" ? "作り方を詳しく確認中" : "料理名と材料を抽出中"} ${Math.round(progress * 100)}%` : "日本語の認識モデルを読み込んでいます";
       $("analysisProgress").value = recognizing ? Math.round(overallProgress * 100) : 0;
     });
-    const knownIngredients = [...new Set([
-      ...state.customIngredients,
-      ...state.recipes.flatMap((recipe) => recipe.ingredients.map((ingredient) => ingredient.name))
-    ])];
-    const suggestion = RecipeOCR.parse(rawText, file.name, knownIngredients);
+    const suggestion = RecipeOCR.parse(rawText, file.name, knownIngredientNames());
     if (!suggestion.ingredients.length) throw new Error("材料欄を認識できませんでした");
-    $("recipeName").value = suggestion.name;
-    $("recipeTime").value = suggestion.time;
-    $("recipeServings").value = suggestion.servings;
-    $("ingredientRows").innerHTML = "";
-    suggestion.ingredients.forEach((ingredient) => addIngredientRow(ingredient.name, ingredient.amount, ingredient));
-    $("stepRows").innerHTML = "";
-    if (suggestion.steps.length) suggestion.steps.forEach((step) => addStepRow(step));
-    else addStepRow();
-    const newCount = suggestion.ingredients.filter((ingredient) => ingredient.resolution === "new").length;
-    const matchedCount = suggestion.ingredients.filter((ingredient) => ingredient.resolution === "matched").length;
-    $("aiNoticeTitle").textContent = `${suggestion.ingredients.length}件の材料と${suggestion.steps.length}件の手順を抽出しました`;
-    $("aiNoticeDetail").textContent = [
-      newCount ? `未登録の${newCount}件は保存時に材料リストへ追加します。` : "",
-      matchedCount ? `近い既存材料へ${matchedCount}件を統合しました。` : "",
-      "保存前に内容を確認してください。"
-    ].filter(Boolean).join(" ");
     $("analysisStatus").hidden = true;
-    $("aiNotice").hidden = false;
-    switchFormTab("manual");
+    $("ocrError").hidden = true;
+    applyRecipeSuggestion(suggestion, "写真");
     toast(`${suggestion.ingredients.length}件の材料を読み取りました`);
   } catch (error) {
     $("analysisStatus").hidden = true;
-    toast(error?.message || "画像を読み取れませんでした");
+    const message = error?.message || "画像を読み取れませんでした";
+    const networkError = /読み込|network|fetch|timeout|タイムアウト/i.test(message);
+    $("ocrErrorTitle").textContent = networkError ? "文字認識の準備に失敗しました" : "材料を読み取れませんでした";
+    $("ocrErrorDetail").textContent = networkError
+      ? "通信環境を確認して再読み取りしてください。初回は日本語モデルの取得が必要です。"
+      : "材料欄と作り方が画面内に入った、文字の鮮明な画像で再読み取りしてください。";
+    $("ocrError").hidden = false;
+    toast(message);
+  } finally {
+    ocrInProgress = false;
+    $("photoInput").disabled = false;
+  }
+}
+
+function normalizeRecipeUrl(value) {
+  const url = new URL(String(value || "").trim());
+  if (url.protocol !== "https:") throw new Error("https://で始まる公開URLを入力してください");
+  if (/^(?:localhost|127\.|0\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/i.test(url.hostname)) throw new Error("公開されているWebサイトのURLを入力してください");
+  return url.href;
+}
+
+async function importRecipeFromUrl() {
+  if (urlImportInProgress) return;
+  let pageUrl;
+  try { pageUrl = normalizeRecipeUrl($("recipeUrl").value); }
+  catch (error) { $("recipeUrl").focus(); toast(error.message); return; }
+
+  urlImportInProgress = true;
+  $("importRecipeUrl").disabled = true;
+  $("urlImportStatus").hidden = false;
+  $("urlImportError").hidden = true;
+  $("urlImportStatusTitle").textContent = "ページを読み取っています…";
+  $("urlImportStatusDetail").textContent = "材料と作り方を探しています";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 35000);
+  try {
+    const readerUrl = `https://r.jina.ai/${pageUrl}`;
+    const response = await fetch(readerUrl, { headers: { Accept: "text/plain" }, signal: controller.signal });
+    if (!response.ok) throw new Error(`ページ取得に失敗しました（${response.status}）`);
+    const text = await response.text();
+    if (text.length < 80) throw new Error("ページの内容が空でした");
+    $("urlImportStatusTitle").textContent = "レシピを整理しています…";
+    $("urlImportStatusDetail").textContent = "材料リストと番号付きの作り方を作成しています";
+    const suggestion = RecipeOCR.parseWebPage(text, pageUrl, knownIngredientNames());
+    $("urlImportStatus").hidden = true;
+    applyRecipeSuggestion(suggestion, "Webページ");
+    toast(`${suggestion.ingredients.length}件の材料を取り込みました`);
+  } catch (error) {
+    $("urlImportStatus").hidden = true;
+    const message = error?.name === "AbortError" ? "ページ取得がタイムアウトしました" : (error?.message || "ページを読み取れませんでした");
+    const sectionError = /材料欄|材料を抽出/.test(message);
+    $("urlImportErrorTitle").textContent = sectionError ? "レシピの材料欄を見つけられませんでした" : "ページを読み取れませんでした";
+    $("urlImportErrorDetail").textContent = sectionError
+      ? "材料と作り方が本文に掲載されたレシピページか確認し、再読み取りしてください。"
+      : "URLが公開されているか確認してください。ログインが必要なページには対応していません。";
+    $("urlImportError").hidden = false;
+    toast(message);
+  } finally {
+    clearTimeout(timeout);
+    urlImportInProgress = false;
+    $("importRecipeUrl").disabled = false;
   }
 }
 
@@ -594,10 +685,25 @@ $("mealDateInput").addEventListener("change", (event) => {
   if (event.target.value) selectedMealDate = event.target.value;
 });
 $("photoInput").addEventListener("change", (event) => analyzePhoto(event.target.files[0]));
+$("retryOCR").addEventListener("click", () => { if (lastPhotoFile) analyzePhoto(lastPhotoFile); else $("photoInput").click(); });
+$("manualFromOCRError").addEventListener("click", () => switchFormTab("manual"));
+$("importRecipeUrl").addEventListener("click", importRecipeFromUrl);
+$("retryUrlImport").addEventListener("click", importRecipeFromUrl);
+$("manualFromUrlError").addEventListener("click", () => switchFormTab("manual"));
+$("recipeUrl").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); importRecipeFromUrl(); } });
 $("dropZone").addEventListener("dragover", (event) => { event.preventDefault(); $("dropZone").classList.add("is-dragging"); });
 $("dropZone").addEventListener("dragleave", () => $("dropZone").classList.remove("is-dragging"));
 $("dropZone").addEventListener("drop", (event) => { event.preventDefault(); $("dropZone").classList.remove("is-dragging"); analyzePhoto(event.dataTransfer.files[0]); });
 document.querySelectorAll("[data-form-tab]").forEach((button) => button.addEventListener("click", () => switchFormTab(button.dataset.formTab)));
+document.querySelector(".segmented").addEventListener("keydown", (event) => {
+  const tabs = [...document.querySelectorAll("[data-form-tab]")];
+  const current = tabs.indexOf(document.activeElement);
+  if (current < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  switchFormTab(tabs[next].dataset.formTab);
+  tabs[next].focus();
+});
 $("addIngredientRow").addEventListener("click", () => { addIngredientRow(); validateRecipeForm(); });
 $("addStepRow").addEventListener("click", () => addStepRow());
 $("recipeForm").addEventListener("input", (event) => {
