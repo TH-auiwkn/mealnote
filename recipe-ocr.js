@@ -131,7 +131,7 @@
   function isIngredientNoise(line) {
     return !line
       || /^(?:材料|分量|[（(【\[]?[A-Z][）)】\]]?|つくり方|作り方)$/i.test(line)
-      || /^[0-9]+\s*[〜ー~-]\s*[0-9]+\s*人分[）)]?$/.test(line)
+      || /^[（(]?[0-9]+\s*[〜ー~-]\s*[0-9]+\s*人分[）)]?$/.test(line)
       || /(?:栄養|エネルギー|たんぱく質|食物繊維|塩分|糖質|野菜量|レシピ登録|登録済|kcal|ホームクッキング)/i.test(line);
   }
 
@@ -175,10 +175,11 @@
       if (hasNumbers) current = `${current}${current ? " " : ""}${line}`.trim();
     });
     if (current.trim()) steps.push(current.trim());
-    if (steps.length) return steps.map(normalizeLine).map((step) => step
+    const cleanStep = (value) => normalizeLine(value)
       .replace(/^(?:©|@|の|\([の©@])[）)]\s*/, "")
-      .replace(/^\(2のフライパン/, "2のフライパン"))
-      .filter((step) => step.length >= 4);
+      .replace(/^\(2のフライパン/, "2のフライパン")
+      .replace(/^\(の(?=火を)/, "");
+    if (steps.length) return steps.map(cleanStep).filter((step) => step.length >= 4);
 
     const paragraphs = [];
     let paragraph = [];
@@ -191,7 +192,7 @@
       if (!/(?:関連レシピ|レシピを探す|キッコーマンホームクッキング)/.test(line)) paragraph.push(line);
     });
     if (paragraph.length) paragraphs.push(normalizeLine(paragraph.join(" ")));
-    return paragraphs.filter((step) => step.length >= 8).slice(0, 30);
+    return paragraphs.map(cleanStep).filter((step) => step.length >= 8).slice(0, 30);
   }
 
   function titleFromFilename(fileName = "") {
