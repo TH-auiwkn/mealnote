@@ -61,7 +61,8 @@ img { display: block; max-width: 100%; }
 .mobile-brand { display: none; border: 0; background: transparent; }
 .icon-button { width: 44px; height: 44px; display: inline-grid; place-items: center; flex: 0 0 auto; padding: 0; border: 1px solid transparent; border-radius: 50%; background: transparent; cursor: pointer; }
 .icon-button:hover { background: var(--surface-muted); }
-.avatar { width: 38px; height: 38px; margin-left: 3px; border: 0; border-radius: 50%; color: #30473a; background: #d4dfd5; cursor: pointer; font-size: 12px; font-weight: 750; }
+.avatar { position: relative; width: 38px; height: 38px; margin-left: 3px; border: 0; border-radius: 50%; color: #30473a; background: #d4dfd5; cursor: pointer; font-size: 12px; font-weight: 750; }
+.avatar.is-synced::after { content: ""; position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); }
 main { width: min(1210px, calc(100% - 72px)); margin: 0 auto; padding: 56px 0 80px; }
 .view { animation: viewIn .22s ease-out; }
 @keyframes viewIn { from { opacity: 0; transform: translateY(4px); } }
@@ -287,6 +288,27 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .custom-list { display: flex; flex-wrap: wrap; gap: 7px; }
 .custom-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 6px 0 11px; border: 1px solid var(--separator); border-radius: 999px; font-size: 12px; }
 .custom-chip button { width: 24px; height: 24px; border: 0; border-radius: 50%; color: var(--text-secondary); background: transparent; cursor: pointer; }
+.account-shell { padding-bottom: 24px; }
+.account-body { display: grid; gap: 16px; padding: 0 26px; }
+.account-user { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.account-avatar-large { width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); font-size: 14px; font-weight: 750; }
+.account-user div { min-width: 0; }
+.account-user h3 { margin: 0; overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.account-user p { margin: 3px 0 0; overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-status-card { display: flex; align-items: flex-start; gap: 11px; padding: 13px; border: 1px solid var(--separator); border-radius: 12px; background: var(--surface-muted); }
+.cloud-status-dot { width: 10px; height: 10px; flex: 0 0 auto; margin-top: 3px; border: 2px solid var(--separator-strong); border-radius: 50%; background: transparent; }
+.cloud-status-card[data-phase="signed-in"] .cloud-status-dot,
+.cloud-status-card[data-phase="syncing"] .cloud-status-dot { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+.cloud-status-card[data-phase="synced"] .cloud-status-dot { border-color: var(--accent); background: var(--accent); }
+.cloud-status-card[data-phase="error"] .cloud-status-dot { border-color: var(--danger); background: var(--danger); }
+.cloud-status-card strong, .cloud-status-card p { display: block; }
+.cloud-status-card strong { font-size: 12px; }
+.cloud-status-card p { margin: 2px 0 0; color: var(--text-secondary); font-size: 10px; line-height: 1.5; }
+.account-panel { display: grid; gap: 13px; }
+.account-panel p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.65; }
+.account-primary { width: 100%; }
+.account-panel .secondary-button { justify-self: start; }
+.account-privacy { margin: 0; padding-top: 14px; border-top: 1px solid var(--separator); color: var(--text-secondary); font-size: 10px; line-height: 1.65; }
 .toast { position: fixed; left: 50%; bottom: 28px; z-index: 100; max-width: calc(100% - 32px); display: flex; align-items: center; gap: 14px; padding: 11px 16px; border-radius: 11px; color: white; background: rgb(38 42 39 / .94); box-shadow: var(--shadow); opacity: 0; transform: translate(-50%, 14px); pointer-events: none; transition: opacity .2s, transform .2s; font-size: 13px; }
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 .toast.is-actionable { pointer-events: auto; }
@@ -353,6 +375,7 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
   .drop-zone { min-height: 230px; }
   .picker-controls { grid-template-columns: 1fr; margin-left: 18px; margin-right: 18px; }
   .manager-shell > p, .manager-shell > form, .custom-list { margin-left: 18px; margin-right: 18px; }
+  .account-body { padding-left: 18px; padding-right: 18px; }
   .toast { bottom: calc(82px + env(safe-area-inset-bottom)); }
 }
 

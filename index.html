@@ -6,11 +6,12 @@
     <meta name="theme-color" content="#f6f6f2" />
     <meta name="description" content="レシピ、献立、買い物をひとつにつなぐ献立管理アプリ Mealnote" />
     <title>Mealnote — 献立が、すっと決まる。</title>
-    <link rel="stylesheet" href="styles.css" />
-    <script src="config.js?v=12"></script>
-    <script src="recipe-ocr.js?v=12" defer></script>
-    <script src="gemma-recipe.js?v=12" defer></script>
-    <script src="app.js?v=12" defer></script>
+    <link rel="stylesheet" href="styles.css?v=13" />
+    <script src="config.js?v=13"></script>
+    <script src="cloud-sync.js?v=13" defer></script>
+    <script src="recipe-ocr.js?v=13" defer></script>
+    <script src="gemma-recipe.js?v=13" defer></script>
+    <script src="app.js?v=13" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">メインコンテンツへ</a>
@@ -45,7 +46,7 @@
           <button class="icon-button" id="helpButton" type="button" aria-label="使い方を表示">
             <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.7 9a2.4 2.4 0 1 1 3.2 2.3c-.9.4-.9 1.1-.9 1.7M12 17h.01"/></svg>
           </button>
-          <button class="avatar" type="button" aria-label="プロフィール"><span>HM</span></button>
+          <button class="avatar" id="accountButton" type="button" aria-label="アカウントと同期設定" aria-haspopup="dialog" aria-controls="accountDialog"><span id="accountAvatar">HM</span></button>
         </header>
 
         <main id="mainContent" tabindex="-1">
@@ -203,6 +204,31 @@
         <p>よく使う材料を登録すると、レシピ入力時に候補として表示されます。</p>
         <form class="quick-add" id="customIngredientForm"><label><span class="sr-only">材料名</span><input id="customIngredientInput" required placeholder="材料名を入力" /></label><button class="primary-button compact" type="submit">追加</button></form>
         <div class="custom-list" id="customIngredientList"></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal compact-modal" id="accountDialog" aria-labelledby="accountTitle">
+      <div class="dialog-shell account-shell">
+        <header class="dialog-header"><div><p class="eyebrow">ACCOUNT</p><h2 id="accountTitle">アカウント</h2></div><button class="icon-button" type="button" data-close aria-label="閉じる"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+        <div class="account-body">
+          <div class="account-user">
+            <span class="account-avatar-large" id="accountAvatarLarge" aria-hidden="true">HM</span>
+            <div><h3 id="accountName">この端末のデータ</h3><p id="accountEmail">Googleにログインすると端末間で同期できます</p></div>
+          </div>
+          <div class="cloud-status-card" id="cloudStatusCard" role="status" aria-live="polite">
+            <span class="cloud-status-dot" id="cloudStatusDot" aria-hidden="true"></span>
+            <div><strong id="cloudStatusTitle">クラウド同期を準備中</strong><p id="cloudStatusMessage">現在のデータはこの端末にも保存されています。</p></div>
+          </div>
+          <div class="account-panel" id="signedOutPanel">
+            <p>Googleアカウントでログインすると、レシピ・献立・買い物リスト・材料候補を別の端末でも利用できます。</p>
+            <button class="primary-button account-primary" id="googleSignIn" type="button">Googleでログイン</button>
+          </div>
+          <div class="account-panel" id="signedInPanel" hidden>
+            <p>変更はFirestoreへ自動保存され、ログイン中の端末へ反映されます。</p>
+            <button class="secondary-button" id="googleSignOut" type="button">ログアウト</button>
+          </div>
+          <p class="account-privacy">クラウド上のデータは、ログインした本人だけが読み書きできるルールで保護されます。ログアウト後も、この端末には最後のデータが残ります。</p>
+        </div>
       </div>
     </dialog>
 

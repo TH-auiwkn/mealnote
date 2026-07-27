@@ -104,20 +104,29 @@ function normalizeRecipeGroups(recipe) {
   };
 }
 
+function normalizeState(saved) {
+  const fallback = initialState();
+  if (!saved || typeof saved !== "object") return fallback;
+  return {
+    recipes: (Array.isArray(saved.recipes) ? saved.recipes : fallback.recipes).map(normalizeRecipeGroups),
+    schedule: saved.schedule && typeof saved.schedule === "object" && !Array.isArray(saved.schedule) ? saved.schedule : fallback.schedule,
+    shopping: Array.isArray(saved.shopping) ? saved.shopping : [],
+    customIngredients: Array.isArray(saved.customIngredients)
+      ? [...new Set(saved.customIngredients.filter((item) => typeof item === "string" && item.trim()))]
+      : fallback.customIngredients
+  };
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!saved) return initialState();
-    return {
-      recipes: (Array.isArray(saved.recipes) ? saved.recipes : baseRecipes).map(normalizeRecipeGroups),
-      schedule: saved.schedule || seedSchedule,
-      shopping: Array.isArray(saved.shopping) ? saved.shopping : [],
-      customIngredients: Array.isArray(saved.customIngredients) ? saved.customIngredients : defaultIngredients
-    };
+    return normalizeState(saved);
   } catch { return initialState(); }
 }
 
 let state = loadState();
+let applyingCloudState = false;
+let connectedCloudUid = "";
 let activeView = "recipes";
 let activeTags = new Set();
 let calendarDate = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -139,6 +148,107 @@ const dateFormatter = new Intl.DateTimeFormat("ja-JP", { month: "long", day: "nu
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch { toast("端末への保存に失敗しました"); }
+  if (!applyingCloudState) window.MealnoteCloud?.queueSave(state);
+}
+
+function renderAllData() {
+  renderIngredientSuggestions();
+  renderRecipes();
+  renderCalendar();
+  renderShopping();
+  if ($("ingredientManagerDialog")?.open) renderCustomIngredients();
+}
+
+function applyCloudState(remoteState, context = {}) {
+  const nextState = normalizeState(remoteState);
+  if (JSON.stringify(nextState) === JSON.stringify(state)) return;
+  applyingCloudState = true;
+  state = nextState;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch { toast("端末への保存に失敗しました"); }
+  applyingCloudState = false;
+  renderAllData();
+  if (context.initial) toast("クラウドのデータを読み込みました");
+}
+
+function accountInitials(user) {
+  if (!user) return "HM";
+  const source = (user.displayName || user.email?.split("@")[0] || "M").trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length > 1) return `${parts[0][0]}${parts.at(-1)[0]}`.toUpperCase();
+  return [...source].slice(0, 2).join("").toUpperCase();
+}
+
+function updateAccountUI(cloudStatus = {}) {
+  const user = cloudStatus.user || null;
+  const signedIn = Boolean(user);
+  const phase = cloudStatus.phase || "initializing";
+  const initials = accountInitials(user);
+  $("accountAvatar").textContent = initials;
+  $("accountAvatarLarge").textContent = initials;
+  $("accountName").textContent = signedIn ? (user.displayName || "Googleアカウント") : "この端末のデータ";
+  $("accountEmail").textContent = signedIn ? (user.email || "ログイン中") : "Googleにログインすると端末間で同期できます";
+  $("signedOutPanel").hidden = signedIn;
+  $("signedInPanel").hidden = !signedIn;
+  $("googleSignIn").disabled = phase === "signing-in";
+  $("cloudStatusCard").dataset.phase = phase;
+  $("accountButton").classList.toggle("is-synced", signedIn && phase === "synced");
+
+  const labels = {
+    initializing: ["クラウド同期を準備中", "現在のデータはこの端末にも保存されています。"],
+    "signed-out": ["この端末に保存中", "ログインするとクラウド保存が始まります。"],
+    "signing-in": ["Googleログインを確認中", "表示された画面でアカウントを選択してください。"],
+    "signed-in": ["クラウドへ接続中", "保存済みのデータを確認しています。"],
+    syncing: ["クラウドへ保存中", cloudStatus.message || "変更を反映しています。"],
+    synced: ["クラウドと同期済み", "レシピ・献立・買い物・材料候補を自動保存します。"],
+    error: ["同期を完了できませんでした", cloudStatus.message || "通信環境を確認して、もう一度お試しください。"]
+  };
+  const [title, message] = labels[phase] || labels.initializing;
+  $("cloudStatusTitle").textContent = title;
+  $("cloudStatusMessage").textContent = message;
+}
+
+async function handleCloudStatus(eventOrStatus) {
+  const cloudStatus = eventOrStatus?.detail || eventOrStatus || {};
+  updateAccountUI(cloudStatus);
+  if (cloudStatus.phase === "signed-out") connectedCloudUid = "";
+  if (cloudStatus.phase !== "signed-in" || !cloudStatus.user?.uid || connectedCloudUid === cloudStatus.user.uid) return;
+  connectedCloudUid = cloudStatus.user.uid;
+  try {
+    const result = await window.MealnoteCloud.connect(state, applyCloudState);
+    if (result.source === "device") toast("この端末のデータをクラウドに保存しました");
+  } catch {
+    connectedCloudUid = "";
+  }
+}
+
+function openAccountDialog() {
+  const cloudStatus = window.MealnoteCloud?.getStatus() || { phase: "error", message: "クラウド同期を読み込めませんでした" };
+  updateAccountUI(cloudStatus);
+  if (cloudStatus.phase === "error" && cloudStatus.user) {
+    connectedCloudUid = "";
+    handleCloudStatus({ ...cloudStatus, phase: "signed-in" });
+  }
+  $("accountDialog").showModal();
+}
+
+function cloudLoginErrorMessage(error) {
+  const code = error?.code || "";
+  if (code.includes("popup-closed-by-user") || code.includes("cancelled-popup-request")) return "ログインをキャンセルしました";
+  if (code.includes("popup-blocked")) return "ログイン画面を開けませんでした。ポップアップを許可してください";
+  if (code.includes("unauthorized-domain")) return "このページからのログインは許可されていません";
+  if (code.includes("network-request-failed")) return "通信環境を確認して、もう一度お試しください";
+  return "Googleログインを完了できませんでした";
+}
+
+function initializeCloudSync() {
+  window.addEventListener("mealnote-cloud-status", handleCloudStatus);
+  if (!window.MealnoteCloud) {
+    updateAccountUI({ phase: "error", message: "クラウド同期の設定がありません" });
+    return;
+  }
+  handleCloudStatus(window.MealnoteCloud.getStatus());
+  window.MealnoteCloud.ready.catch(() => {});
 }
 
 function toast(message, actionLabel = "", action = null) {
@@ -816,10 +926,37 @@ $("shareList").addEventListener("click", async () => {
   catch { toast("コピーできませんでした"); }
 });
 $("helpButton").addEventListener("click", () => toast("レシピ写真を追加するか、日付を選んで献立を作成できます"));
-$("mobileMore").addEventListener("click", () => toast("Mealnote デモ版 — データはこの端末に保存されます"));
+$("accountButton").addEventListener("click", openAccountDialog);
+$("mobileMore").addEventListener("click", openAccountDialog);
+$("googleSignIn").addEventListener("click", async () => {
+  $("googleSignIn").disabled = true;
+  try {
+    await window.MealnoteCloud.signIn();
+  } catch (error) {
+    updateAccountUI(window.MealnoteCloud?.getStatus() || { phase: "signed-out" });
+    toast(cloudLoginErrorMessage(error));
+  } finally {
+    $("googleSignIn").disabled = false;
+  }
+});
+$("googleSignOut").addEventListener("click", async () => {
+  $("googleSignOut").disabled = true;
+  try {
+    await window.MealnoteCloud.signOut();
+    toast("ログアウトしました。データはこの端末にも残っています");
+  } catch {
+    toast("ログアウトできませんでした");
+  } finally {
+    $("googleSignOut").disabled = false;
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") window.MealnoteCloud?.flush().catch(() => {});
+});
 
 updateGemmaServiceStatus();
 renderIngredientSuggestions();
 renderRecipes();
 renderCalendar();
 renderShopping();
+initializeCloudSync();

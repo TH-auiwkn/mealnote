@@ -6,6 +6,18 @@
 
 - 材料は「なし」または（A）〜（H）のグループに分けて登録できます。
 - 画像・URL取り込みでも、元レシピの（A）（B）などの材料グループを保持します。
+- Googleアカウントでログインすると、レシピ・献立・買い物リスト・材料候補を端末間で同期できます。
+
+## クラウド保存
+
+ログイン中のデータは Cloud Firestore（東京リージョン）へ自動保存されます。初めてログインした際、クラウドにデータがなければ、その端末に保存されているデータを引き継ぎます。ログアウト中は従来どおり端末内へ保存します。
+
+- 認証: Firebase Authentication / Googleログイン
+- データベース: Cloud Firestore（`asia-northeast1`）
+- セキュリティ: Firestoreルールでログイン本人のドキュメントだけを許可
+- 同期対象: レシピ、献立、買い物リスト、カスタム材料
+
+`config.js` のFirebase設定はWebアプリ用の公開識別情報です。データへのアクセス可否はAPIキーではなく、Firebase Authenticationと`firestore.rules`で制御します。
 
 ## Gemma 4によるレシピ抽出
 
@@ -18,6 +30,8 @@
 ## 構成
 
 - フロントエンド: GitHub Pages
+- 認証: Firebase Authentication
+- データ保存: Cloud Firestore（`asia-northeast1`）
 - 解析API: Cloud Run（`asia-northeast1`）
 - AI: Vertex AI / Gemma 4（`global`）
 
