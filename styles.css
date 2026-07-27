@@ -280,19 +280,6 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .compact-modal { width: min(100% - 32px, 520px); }
 .manager-shell { padding-bottom: 22px; }
 .manager-shell > p, .manager-shell > form, .custom-list { margin-left: 26px; margin-right: 26px; }
-.settings-shell { padding-bottom: 0; }
-.settings-shell form { display: grid; gap: 15px; }
-.settings-intro, .settings-shell form > .field, .remember-option, .settings-note, .settings-link { margin-left: 26px; margin-right: 26px; }
-.settings-intro { margin-top: 0; margin-bottom: 0; color: var(--text-secondary); font-size: 12px; }
-.secret-input { display: flex; align-items: center; gap: 8px; }
-.secret-input input { min-width: 0; flex: 1; }
-.secret-input .text-button { min-width: 44px; }
-.remember-option { min-height: 44px; display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 620; }
-.remember-option input { width: 19px; height: 19px; accent-color: var(--accent); }
-.settings-note { margin-top: -9px; margin-bottom: 0; color: var(--text-secondary); font-size: 10px; }
-.settings-link { margin-top: -4px; margin-bottom: 0; font-size: 12px; }
-.settings-link a { color: var(--accent-strong); text-underline-offset: 2px; }
-.settings-actions { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 9px; margin-top: 4px; padding: 16px 26px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--separator); }
 .destructive-text { color: var(--danger); }
 .manager-shell > p { margin-top: 0; color: var(--text-secondary); font-size: 12px; }
 .custom-list { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -364,10 +351,6 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
   .drop-zone { min-height: 230px; }
   .picker-controls { grid-template-columns: 1fr; margin-left: 18px; margin-right: 18px; }
   .manager-shell > p, .manager-shell > form, .custom-list { margin-left: 18px; margin-right: 18px; }
-  .settings-intro, .settings-shell form > .field, .remember-option, .settings-note, .settings-link { margin-left: 18px; margin-right: 18px; }
-  .settings-actions { grid-template-columns: 1fr 1fr; padding-left: 18px; padding-right: 18px; }
-  .settings-actions > span { display: none; }
-  .settings-actions .destructive-text { grid-column: 1 / -1; justify-self: start; }
   .toast { bottom: calc(82px + env(safe-area-inset-bottom)); }
 }
 

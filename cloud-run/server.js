@@ -174,7 +174,11 @@ export function createApp({ extractRecipe, fetchRecipe = readPublicRecipe, now =
   app.use((error, _req, res, _next) => {
     if (error?.type === "entity.too.large") return res.status(413).json({ error: "送信データが大きすぎます" });
     const status = Number(error?.status) || (/RESOURCE_EXHAUSTED|429/.test(error?.message || "") ? 429 : 500);
-    const publicMessage = status >= 500 ? (status === 502 ? error.message : "Gemma 4の解析中にエラーが発生しました") : error.message;
+    const publicMessage = status === 429
+      ? "Gemma 4が混み合っています。少し待ってからもう一度お試しください"
+      : status >= 500
+        ? (status === 502 ? error.message : "Gemma 4の解析中にエラーが発生しました")
+        : error.message;
     if (status >= 500) console.error("recipe extraction failed", { status, name: error?.name, message: error?.message });
     res.status(status).json({ error: publicMessage });
   });
