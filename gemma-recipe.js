@@ -54,7 +54,7 @@
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (response.status === 413) throw new Error("画像またはページのデータが大きすぎます");
-        if (response.status === 429) throw new Error("解析の利用上限に達しました。時間をおいて再試行してください");
+        if (response.status === 429) throw new Error(payload?.error || "Gemma 4が混み合っています。少し待ってからもう一度お試しください");
         throw new Error(payload?.error || `Gemma 4解析サービスでエラーが発生しました（${response.status}）`);
       }
       if (!payload?.recipe) throw new Error("Gemma 4から抽出結果が返りませんでした");
