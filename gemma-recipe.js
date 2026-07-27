@@ -20,6 +20,37 @@
     return cleanText(value).toUpperCase().match(/[A-H]/)?.[0] || "";
   }
 
+  function stepText(value, depth = 0) {
+    if (depth > 5 || value == null) return "";
+    if (typeof value === "string" || typeof value === "number") {
+      const text = cleanText(value);
+      return /^\[?object(?: Object)?\]?$/i.test(text) ? "" : text;
+    }
+    if (Array.isArray(value)) return value.map((item) => stepText(item, depth + 1)).filter(Boolean).join(" ");
+    if (typeof value !== "object") return "";
+    const preferredKeys = ["text", "instruction", "instructions", "description", "content", "step", "direction", "directions", "value", "name"];
+    for (const key of preferredKeys) {
+      if (!Object.hasOwn(value, key)) continue;
+      const text = stepText(value[key], depth + 1);
+      if (text) return text;
+    }
+    return Object.entries(value)
+      .filter(([key]) => !/^(?:@type|type|position|number|id|name)$/i.test(key))
+      .map(([, item]) => stepText(item, depth + 1))
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  function normalizeSteps(value) {
+    const candidates = Array.isArray(value)
+      ? value
+      : (value && typeof value === "object" ? Object.values(value) : [value]);
+    return candidates
+      .map((step) => stepText(step).replace(/^(?:手順)?\s*[0-9①-⑳]+[.)、:：\s]*/, ""))
+      .filter((step) => step.length >= 2)
+      .slice(0, 60);
+  }
+
   function normalizeRecipe(value, knownIngredients = []) {
     const ingredients = Array.isArray(value?.ingredients) ? value.ingredients : [];
     let activeGroup = "";
@@ -38,10 +69,7 @@
       normalizedIngredients.push({ ...normalized, ...root.RecipeOCR.resolveIngredient(name, knownIngredients) });
     });
     if (!normalizedIngredients.length) throw new Error("Gemma 4が材料を抽出できませんでした");
-    const steps = (Array.isArray(value?.steps) ? value.steps : [])
-      .map((step) => cleanText(step).replace(/^(?:手順)?\s*[0-9①-⑳]+[.)、:：\s]*/, ""))
-      .filter((step) => step.length >= 2)
-      .slice(0, 60);
+    const steps = normalizeSteps(value?.steps ?? value?.instructions ?? value?.directions);
     return {
       name: cleanText(value?.name) || "Gemma 4で読み取ったレシピ",
       time: Math.min(1440, Math.max(1, Number(value?.time) || 20)),

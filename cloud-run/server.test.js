@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createApp, normalizeGeneratedRecipe, normalizeUrl, parseRecipeText, sourceExcerpt } from "./server.js";
+import { createApp, normalizeGeneratedRecipe, normalizeGeneratedSteps, normalizeUrl, parseRecipeText, sourceExcerpt } from "./server.js";
 
 const recipe = { name: "テスト料理", time: 10, servings: 2, ingredients: [{ name: "卵", amount: "2個", group: "A" }], steps: ["焼く。"] };
 
@@ -19,8 +19,30 @@ test("URLとJSON応答を正規化できる", () => {
     title: "料理",
     ingredients: [{ item: "【A】", amount: "", group: "" }, { item: "卵", amount: "2個" }],
     instructions: ["1 焼く。"]
-  }), { name: "料理", time: 20, servings: 2, ingredients: [{ name: "卵", amount: "2個", group: "A" }], steps: ["1 焼く。"] });
+  }), { name: "料理", time: 20, servings: 2, ingredients: [{ name: "卵", amount: "2個", group: "A" }], steps: ["焼く。"] });
   assert.match(sourceExcerpt(`${"前".repeat(8000)}\n材料\n卵`), /材料/);
+});
+
+test("構造化された工程を文字列へ正規化しobject表示を防ぐ", () => {
+  assert.deepEqual(normalizeGeneratedSteps([
+    { text: "① 野菜を切る。" },
+    { instruction: { text: "2. 肉を炒める。" } },
+    { description: ["弱火で15分", "煮込む。"] },
+    { "@type": "HowToStep", content: "ルウを溶かす。" },
+    { value: "object" }
+  ]), ["野菜を切る。", "肉を炒める。", "弱火で15分 煮込む。", "ルウを溶かす。"]);
+  assert.deepEqual(normalizeGeneratedRecipe({
+    name: "重ね煮キーマカレー",
+    ingredients: [{ name: "合い挽き肉", amount: "300g", group: "" }],
+    steps: { first: { text: "材料を重ねる。" }, second: { instruction: "弱火で15分加熱する。" } }
+  }).steps, ["材料を重ねる。", "弱火で15分加熱する。"]) ;
+});
+
+test("ブログの【材料】表記を中心に本文を切り出す", () => {
+  const excerpt = sourceExcerpt(`${"前置き".repeat(30000)}\n【材料】（2人分）\n玉ねぎ 1個\n【作り方】\n炒める。`);
+  assert.match(excerpt, /【材料】/);
+  assert.match(excerpt, /【作り方】/);
+  assert.ok(excerpt.length <= 120000);
 });
 
 test("画像解析APIは許可されたOriginと画像を受け付ける", async (t) => {

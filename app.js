@@ -95,12 +95,38 @@ function normalizeIngredientGroup(value = "") {
   return match ? match[0] : "";
 }
 
+function normalizeRecipeStep(value, depth = 0) {
+  if (depth > 5 || value == null) return "";
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
+    return /^\[?object(?: Object)?\]?$/i.test(text) ? "" : text;
+  }
+  if (Array.isArray(value)) return value.map((item) => normalizeRecipeStep(item, depth + 1)).filter(Boolean).join(" ");
+  if (typeof value !== "object") return "";
+  for (const key of ["text", "instruction", "instructions", "description", "content", "step", "direction", "directions", "value", "name"]) {
+    if (!Object.hasOwn(value, key)) continue;
+    const text = normalizeRecipeStep(value[key], depth + 1);
+    if (text) return text;
+  }
+  return Object.entries(value)
+    .filter(([key]) => !/^(?:@type|type|position|number|id|name)$/i.test(key))
+    .map(([, item]) => normalizeRecipeStep(item, depth + 1))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function normalizeRecipeSteps(value) {
+  const candidates = Array.isArray(value) ? value : (value && typeof value === "object" ? Object.values(value) : [value]);
+  return candidates.map((step) => normalizeRecipeStep(step)).filter(Boolean).slice(0, 60);
+}
+
 function normalizeRecipeGroups(recipe) {
   return {
     ...recipe,
     ingredients: Array.isArray(recipe?.ingredients)
       ? recipe.ingredients.map((item) => ({ ...item, group: normalizeIngredientGroup(item?.group) }))
-      : []
+      : [],
+    steps: normalizeRecipeSteps(recipe?.steps)
   };
 }
 
@@ -139,6 +165,7 @@ let lastUrlText = "";
 let lastUrlPage = "";
 let ingredientRowId = 0;
 let stepRowId = 0;
+let editingRecipeId = "";
 
 const $ = (id) => document.getElementById(id);
 const escapeHTML = (value = "") => String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
@@ -375,6 +402,7 @@ function openRecipeDetail(id) {
       <div class="detail-actions">
         <button class="primary-button" type="button" data-schedule-recipe="${escapeAttr(recipe.id)}">献立に追加</button>
         <button class="secondary-button" type="button" data-shop-recipe="${escapeAttr(recipe.id)}">材料を買い物へ</button>
+        <button class="secondary-button edit-recipe-button" type="button" data-edit-recipe="${escapeAttr(recipe.id)}">レシピを編集</button>
       </div>
       <section class="detail-section"><h3>材料</h3><ul class="ingredient-list">${renderRecipeIngredientList(recipe.ingredients)}</ul></section>
       <section class="detail-section"><h3>作り方</h3><ol class="steps-list">${recipe.steps.map((step) => `<li>${escapeHTML(step)}</li>`).join("")}</ol></section>
@@ -550,7 +578,12 @@ function renderIngredientSuggestions() {
 }
 
 function resetRecipeForm() {
+  editingRecipeId = "";
   $("recipeForm").reset();
+  $("formEyebrow").textContent = "NEW RECIPE";
+  $("formTitle").textContent = "レシピを追加";
+  $("saveRecipe").textContent = "レシピを保存";
+  $("formMethodTabs").hidden = false;
   $("recipeTime").value = 20;
   $("recipeServings").value = 2;
   $("ingredientRows").innerHTML = "";
@@ -576,6 +609,31 @@ function resetRecipeForm() {
   $("importRecipeUrl").disabled = false;
   switchFormTab("photo");
   validateRecipeForm();
+}
+
+function openRecipeEditor(recipeId) {
+  const recipe = state.recipes.find((item) => item.id === recipeId);
+  if (!recipe) return;
+  resetRecipeForm();
+  editingRecipeId = recipe.id;
+  $("formEyebrow").textContent = "EDIT RECIPE";
+  $("formTitle").textContent = "レシピを編集";
+  $("saveRecipe").textContent = "変更を保存";
+  $("recipeName").value = recipe.name;
+  $("recipeTime").value = recipe.time;
+  $("recipeServings").value = recipe.servings;
+  $("ingredientRows").innerHTML = "";
+  recipe.ingredients.forEach((ingredient) => addIngredientRow(ingredient.name, ingredient.amount, null, ingredient.group));
+  if (!recipe.ingredients.length) addIngredientRow();
+  $("stepRows").innerHTML = "";
+  normalizeRecipeSteps(recipe.steps).forEach((step) => addStepRow(step));
+  if (!$("stepRows").children.length) addStepRow();
+  switchFormTab("manual");
+  $("formMethodTabs").hidden = true;
+  $("gemmaBanner").hidden = true;
+  validateRecipeForm();
+  if ($("recipeDetailDialog").open) $("recipeDetailDialog").close();
+  $("recipeFormDialog").showModal();
 }
 
 function switchFormTab(tab) {
@@ -772,25 +830,29 @@ function submitRecipe(event) {
     group: normalizeIngredientGroup(row.querySelector(".ingredient-group").value),
   })).filter((item) => item.name).map((item) => ({ ...item, category: categorize(item.name) }));
   if (!$("recipeName").value.trim() || ingredients.length === 0) { toast("料理名と材料を入力してください"); return; }
-  const id = `recipe-${Date.now()}`;
+  const existingRecipe = editingRecipeId ? state.recipes.find((item) => item.id === editingRecipeId) : null;
+  const id = existingRecipe?.id || `recipe-${Date.now()}`;
   const recipe = {
+    ...existingRecipe,
     id,
     name: $("recipeName").value.trim(),
     time: Math.max(1, Number($("recipeTime").value) || 20),
     servings: Math.max(1, Number($("recipeServings").value) || 2),
     ingredients,
     steps: [...document.querySelectorAll(".step-input")].map((input) => input.value.trim()).filter(Boolean),
-    lastCooked: "",
-    createdAt: iso(today)
+    lastCooked: existingRecipe?.lastCooked || "",
+    createdAt: existingRecipe?.createdAt || iso(today)
   };
   if (!recipe.steps.length) recipe.steps = ["材料を準備する。", "火が通るまで調理し、味を整える。"]; 
-  state.recipes.unshift(recipe);
+  if (existingRecipe) state.recipes = state.recipes.map((item) => item.id === id ? recipe : item);
+  else state.recipes.unshift(recipe);
   ingredients.forEach((item) => { if (!state.customIngredients.includes(item.name)) state.customIngredients.push(item.name); });
   saveState();
   $("recipeFormDialog").close();
   renderIngredientSuggestions();
   renderRecipes();
-  toast("レシピを保存しました");
+  toast(existingRecipe ? "レシピを更新しました" : "レシピを保存しました");
+  editingRecipeId = "";
   setTimeout(() => openRecipeDetail(id), 180);
 }
 
@@ -805,6 +867,8 @@ document.addEventListener("click", (event) => {
   if (recipeButton) openRecipeDetail(recipeButton.dataset.recipeId);
   const deleteRecipeButton = event.target.closest("[data-delete-recipe]");
   if (deleteRecipeButton) deleteRecipe(deleteRecipeButton.dataset.deleteRecipe);
+  const editRecipeButton = event.target.closest("[data-edit-recipe]");
+  if (editRecipeButton) openRecipeEditor(editRecipeButton.dataset.editRecipe);
   const openButton = event.target.closest("[data-open='recipeForm']");
   if (openButton) { resetRecipeForm(); $("recipeFormDialog").showModal(); }
   const closeButton = event.target.closest("[data-close]");

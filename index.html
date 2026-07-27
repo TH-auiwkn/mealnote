@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#f6f6f2" />
     <meta name="description" content="レシピ、献立、買い物をひとつにつなぐ献立管理アプリ Mealnote" />
     <title>Mealnote — 献立が、すっと決まる。</title>
-    <link rel="stylesheet" href="styles.css?v=13" />
-    <script src="config.js?v=13"></script>
-    <script src="cloud-sync.js?v=13" defer></script>
-    <script src="recipe-ocr.js?v=13" defer></script>
-    <script src="gemma-recipe.js?v=13" defer></script>
-    <script src="app.js?v=13" defer></script>
+    <link rel="stylesheet" href="styles.css?v=14" />
+    <script src="config.js?v=14"></script>
+    <script src="cloud-sync.js?v=14" defer></script>
+    <script src="recipe-ocr.js?v=14" defer></script>
+    <script src="gemma-recipe.js?v=14" defer></script>
+    <script src="app.js?v=14" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">メインコンテンツへ</a>
@@ -134,8 +134,8 @@
 
     <dialog class="modal" id="recipeFormDialog" aria-labelledby="formTitle">
       <div class="dialog-shell form-shell">
-        <header class="dialog-header"><div><p class="eyebrow">NEW RECIPE</p><h2 id="formTitle">レシピを追加</h2></div><button class="icon-button" type="button" data-close aria-label="閉じる"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
-        <div class="segmented" role="tablist" aria-label="登録方法">
+        <header class="dialog-header"><div><p class="eyebrow" id="formEyebrow">NEW RECIPE</p><h2 id="formTitle">レシピを追加</h2></div><button class="icon-button" type="button" data-close aria-label="閉じる"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+        <div class="segmented" id="formMethodTabs" role="tablist" aria-label="登録方法">
           <button id="photoFormTab" type="button" role="tab" aria-selected="true" aria-controls="photoFormPanel" tabindex="0" data-form-tab="photo">写真から読み取る</button>
           <button id="urlFormTab" type="button" role="tab" aria-selected="false" aria-controls="urlFormPanel" tabindex="-1" data-form-tab="url">URLから取り込む</button>
           <button id="manualFormTab" type="button" role="tab" aria-selected="false" aria-controls="manualFormPanel" tabindex="-1" data-form-tab="manual">手入力する</button>
