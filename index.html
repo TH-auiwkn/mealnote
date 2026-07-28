@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#f6f6f2" />
     <meta name="description" content="レシピ、献立、買い物をひとつにつなぐ献立管理アプリ Mealnote" />
     <title>Mealnote — 献立が、すっと決まる。</title>
-    <link rel="stylesheet" href="styles.css?v=15" />
-    <script src="config.js?v=15"></script>
-    <script src="cloud-sync.js?v=15" defer></script>
-    <script src="recipe-ocr.js?v=15" defer></script>
-    <script src="gemma-recipe.js?v=15" defer></script>
-    <script src="app.js?v=15" defer></script>
+    <link rel="stylesheet" href="styles.css?v=16" />
+    <script src="config.js?v=16"></script>
+    <script src="cloud-sync.js?v=16" defer></script>
+    <script src="recipe-ocr.js?v=16" defer></script>
+    <script src="gemma-recipe.js?v=16" defer></script>
+    <script src="app.js?v=16" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">メインコンテンツへ</a>
@@ -65,16 +65,20 @@
               <label class="search-field">
                 <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
                 <span class="sr-only">レシピを検索</span>
-                <input id="searchInput" type="search" placeholder="料理名や材料で検索" autocomplete="off" />
+                <input id="searchInput" type="search" placeholder="料理名・材料・調理器具で検索" autocomplete="off" />
               </label>
               <button class="filter-button" id="filterButton" type="button" aria-expanded="false" aria-controls="tagPanel">
                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M7 12h10M10 17h4"/></svg>
-                材料で絞り込む <span id="filterCount" hidden>0</span>
+                絞り込む <span id="filterCount" hidden>0</span>
               </button>
             </div>
             <div class="tag-panel" id="tagPanel" hidden>
-              <div class="tag-panel-head"><strong>材料を選択</strong><button class="text-button" id="clearFilters" type="button">すべて解除</button></div>
-              <div class="tag-options" id="tagOptions"></div>
+              <div class="tag-panel-head"><strong>条件で絞り込む</strong><button class="text-button" id="clearFilters" type="button">すべて解除</button></div>
+              <div class="filter-groups">
+                <section class="filter-group" aria-labelledby="ingredientFilterTitle"><h3 id="ingredientFilterTitle">材料</h3><div class="tag-options" id="tagOptions"></div></section>
+                <section class="filter-group" aria-labelledby="toolFilterTitle"><h3 id="toolFilterTitle">調理器具</h3><div class="tag-options" id="toolOptions"></div></section>
+                <section class="filter-group" aria-labelledby="dishTypeFilterTitle"><h3 id="dishTypeFilterTitle">料理の種類</h3><div class="tag-options" id="dishTypeOptions"></div></section>
+              </div>
             </div>
 
             <div class="result-row"><p id="resultSummary" aria-live="polite"></p><label class="sort-control">並び順<select id="sortSelect"><option value="recent">最近追加した順</option><option value="cooked">最後に作った順</option><option value="name">名前順</option></select></label></div>
@@ -168,6 +172,8 @@
               <label class="field full"><span>料理名 <b>必須</b></span><input id="recipeName" name="name" required placeholder="例：鮭の照り焼き" /></label>
               <label class="field"><span>調理時間</span><div class="unit-input"><input id="recipeTime" name="time" type="number" min="1" value="20" /><em>分</em></div></label>
               <label class="field"><span>人数</span><div class="unit-input"><input id="recipeServings" name="servings" type="number" min="1" value="2" /><em>人分</em></div></label>
+              <label class="field"><span>料理の種類</span><select id="recipeDishType" name="dishType"><option value="メイン料理">メイン料理</option><option value="副菜">副菜</option><option value="その他" selected>その他</option></select></label>
+              <label class="field full"><span>調理器具</span><input id="recipeTools" name="tools" placeholder="例：フライパン、包丁" aria-describedby="recipeToolsHint" /><small id="recipeToolsHint">複数ある場合は「、」またはカンマで区切ってください。</small></label>
             </div>
             <div class="ingredient-editor">
               <div class="section-row"><div><h3>材料</h3><p>先頭の欄で「なし」または（A）〜（H）のグループを選べます。</p></div><button class="text-button" type="button" id="manageIngredients">材料リストを編集</button></div>
@@ -176,7 +182,7 @@
               <datalist id="ingredientSuggestions"></datalist>
             </div>
             <div class="step-editor">
-              <div class="section-row"><div><h3>作り方</h3><p>1工程ずつ順番に入力してください。</p></div></div>
+              <div class="section-row"><div><h3>作り方</h3><p>1工程ずつ入力し、必要な位置に新しい工程を挿入できます。</p></div></div>
               <div class="step-rows" id="stepRows"></div>
               <button class="add-row-button" type="button" id="addStepRow">＋ 手順を追加</button>
             </div>

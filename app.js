@@ -1,10 +1,13 @@
 const STORAGE_KEY = "mealnote-state-v1";
 const INGREDIENT_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+const DISH_TYPES = ["メイン料理", "副菜", "その他"];
 
 const baseRecipes = [
   {
     id: "salmon-teriyaki",
     name: "鮭の照り焼き",
+    dishType: "メイン料理",
+    tools: ["フライパン"],
     time: 20,
     servings: 2,
     ingredients: [
@@ -21,6 +24,8 @@ const baseRecipes = [
   {
     id: "tomato-chicken",
     name: "鶏肉のトマト煮",
+    dishType: "メイン料理",
+    tools: ["鍋", "包丁"],
     time: 35,
     servings: 2,
     ingredients: [
@@ -37,6 +42,8 @@ const baseRecipes = [
   {
     id: "miso-stirfry",
     name: "豚肉と野菜の味噌炒め",
+    dishType: "メイン料理",
+    tools: ["フライパン", "包丁"],
     time: 15,
     servings: 2,
     ingredients: [
@@ -53,6 +60,8 @@ const baseRecipes = [
   {
     id: "cream-pasta",
     name: "ほうれん草ときのこのクリームパスタ",
+    dishType: "メイン料理",
+    tools: ["鍋", "フライパン"],
     time: 25,
     servings: 2,
     ingredients: [
@@ -120,13 +129,24 @@ function normalizeRecipeSteps(value) {
   return candidates.map((step) => normalizeRecipeStep(step)).filter(Boolean).slice(0, 60);
 }
 
+function normalizeRecipeTools(value) {
+  const candidates = Array.isArray(value) ? value : String(value || "").split(/[、,，\n]/);
+  return [...new Set(candidates.map((item) => String(item || "").normalize("NFKC").trim()).filter(Boolean))].slice(0, 20);
+}
+
+function normalizeDishType(value) {
+  return DISH_TYPES.includes(value) ? value : "その他";
+}
+
 function normalizeRecipeGroups(recipe) {
   return {
     ...recipe,
     ingredients: Array.isArray(recipe?.ingredients)
       ? recipe.ingredients.map((item) => ({ ...item, group: normalizeIngredientGroup(item?.group) }))
       : [],
-    steps: normalizeRecipeSteps(recipe?.steps)
+    steps: normalizeRecipeSteps(recipe?.steps),
+    tools: normalizeRecipeTools(recipe?.tools),
+    dishType: normalizeDishType(recipe?.dishType)
   };
 }
 
@@ -155,6 +175,8 @@ let applyingCloudState = false;
 let connectedCloudUid = "";
 let activeView = "recipes";
 let activeTags = new Set();
+let activeTools = new Set();
+let activeDishTypes = new Set();
 let calendarDate = new Date(today.getFullYear(), today.getMonth(), 1);
 let selectedMealDate = iso(today);
 let pendingImage = "";
@@ -330,11 +352,24 @@ function setView(view) {
   $("mainContent").focus({ preventScroll: true });
 }
 
+function filterOptionMarkup(value, count, activeSet) {
+  return `<label class="tag-option"><input type="checkbox" value="${escapeAttr(value)}" ${activeSet.has(value) ? "checked" : ""}><span>${escapeHTML(value)} <small>${count}</small></span></label>`;
+}
+
 function renderTags() {
-  const counts = new Map();
-  state.recipes.forEach((recipe) => recipe.ingredients.forEach((item) => counts.set(item.name, (counts.get(item.name) || 0) + 1)));
-  const tags = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja")).slice(0, 18);
-  $("tagOptions").innerHTML = tags.map(([tag, count]) => `<label class="tag-option"><input type="checkbox" value="${escapeAttr(tag)}" ${activeTags.has(tag) ? "checked" : ""}><span>${escapeHTML(tag)} <small>${count}</small></span></label>`).join("");
+  const ingredientCounts = new Map();
+  const toolCounts = new Map();
+  const dishTypeCounts = new Map(DISH_TYPES.map((type) => [type, 0]));
+  state.recipes.forEach((recipe) => {
+    recipe.ingredients.forEach((item) => ingredientCounts.set(item.name, (ingredientCounts.get(item.name) || 0) + 1));
+    recipe.tools.forEach((tool) => toolCounts.set(tool, (toolCounts.get(tool) || 0) + 1));
+    dishTypeCounts.set(recipe.dishType, (dishTypeCounts.get(recipe.dishType) || 0) + 1);
+  });
+  const ingredients = [...ingredientCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja")).slice(0, 18);
+  const tools = [...toolCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja"));
+  $("tagOptions").innerHTML = ingredients.map(([tag, count]) => filterOptionMarkup(tag, count, activeTags)).join("") || `<p class="filter-empty">登録された材料はありません</p>`;
+  $("toolOptions").innerHTML = tools.map(([tool, count]) => filterOptionMarkup(tool, count, activeTools)).join("") || `<p class="filter-empty">登録された調理器具はありません</p>`;
+  $("dishTypeOptions").innerHTML = DISH_TYPES.map((type) => filterOptionMarkup(type, dishTypeCounts.get(type) || 0, activeDishTypes)).join("");
 }
 
 function filteredRecipes() {
@@ -342,9 +377,12 @@ function filteredRecipes() {
   const sort = $("sortSelect").value;
   const recipes = state.recipes.filter((recipe) => {
     const ingredientNames = recipe.ingredients.map((item) => item.name);
-    const matchesQuery = !query || recipe.name.toLocaleLowerCase("ja").includes(query) || ingredientNames.some((name) => name.toLocaleLowerCase("ja").includes(query));
+    const toolNames = recipe.tools.map((tool) => tool.toLocaleLowerCase("ja"));
+    const matchesQuery = !query || recipe.name.toLocaleLowerCase("ja").includes(query) || ingredientNames.some((name) => name.toLocaleLowerCase("ja").includes(query)) || toolNames.some((tool) => tool.includes(query));
     const matchesTags = [...activeTags].every((tag) => ingredientNames.includes(tag));
-    return matchesQuery && matchesTags;
+    const matchesTools = activeTools.size === 0 || [...activeTools].some((tool) => recipe.tools.includes(tool));
+    const matchesDishTypes = activeDishTypes.size === 0 || activeDishTypes.has(recipe.dishType);
+    return matchesQuery && matchesTags && matchesTools && matchesDishTypes;
   });
   recipes.sort((a, b) => {
     if (sort === "name") return a.name.localeCompare(b.name, "ja");
@@ -365,6 +403,7 @@ function renderRecipes() {
       <button class="recipe-card-button" type="button" data-recipe-id="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.name)}の詳細を見る">
         <div class="recipe-card-content">
           <h2>${escapeHTML(recipe.name)}</h2>
+          <div class="recipe-facets"><span class="dish-type-tag">${escapeHTML(recipe.dishType)}</span>${recipe.tools.slice(0, 2).map((tool) => `<span class="tool-tag">${escapeHTML(tool)}</span>`).join("")}</div>
           <div class="ingredient-tags">${recipe.ingredients.slice(0, 4).map((item) => `<span class="ingredient-tag">${escapeHTML(item.name)}</span>`).join("")}</div>
         </div>
         <div class="recipe-summary">
@@ -376,7 +415,7 @@ function renderRecipes() {
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg><span>削除</span>
       </button>
     </article>`).join("");
-  const count = activeTags.size;
+  const count = activeTags.size + activeTools.size + activeDishTypes.size;
   $("filterCount").hidden = count === 0;
   $("filterCount").textContent = count;
 }
@@ -398,12 +437,13 @@ function openRecipeDetail(id) {
   if (!recipe) return;
   $("recipeDetail").innerHTML = `
     <div class="detail-body">
-      <div class="detail-head"><div><h2 id="detailTitle">${escapeHTML(recipe.name)}</h2><p>${recipe.time}分 ・ ${recipe.servings}人分 ・ ${escapeHTML(formatLastCooked(recipe.lastCooked))}</p></div></div>
+      <div class="detail-head"><div><h2 id="detailTitle">${escapeHTML(recipe.name)}</h2><p>${escapeHTML(recipe.dishType)} ・ ${recipe.time}分 ・ ${recipe.servings}人分 ・ ${escapeHTML(formatLastCooked(recipe.lastCooked))}</p></div></div>
       <div class="detail-actions">
         <button class="primary-button" type="button" data-schedule-recipe="${escapeAttr(recipe.id)}">献立に追加</button>
         <button class="secondary-button" type="button" data-shop-recipe="${escapeAttr(recipe.id)}">材料を買い物へ</button>
         <button class="secondary-button edit-recipe-button" type="button" data-edit-recipe="${escapeAttr(recipe.id)}">レシピを編集</button>
       </div>
+      ${recipe.tools.length ? `<section class="detail-section compact-detail-section"><h3>調理器具</h3><div class="detail-tags">${recipe.tools.map((tool) => `<span class="tool-tag">${escapeHTML(tool)}</span>`).join("")}</div></section>` : ""}
       <section class="detail-section"><h3>材料</h3><ul class="ingredient-list">${renderRecipeIngredientList(recipe.ingredients)}</ul></section>
       <section class="detail-section"><h3>作り方</h3><ol class="steps-list">${recipe.steps.map((step) => `<li>${escapeHTML(step)}</li>`).join("")}</ol></section>
     </div>`;
@@ -477,6 +517,10 @@ function deleteRecipe(recipeId) {
   });
   const availableIngredients = new Set(state.recipes.flatMap((item) => item.ingredients.map((ingredient) => ingredient.name)));
   activeTags = new Set([...activeTags].filter((tag) => availableIngredients.has(tag)));
+  const availableTools = new Set(state.recipes.flatMap((item) => item.tools));
+  activeTools = new Set([...activeTools].filter((tool) => availableTools.has(tool)));
+  const availableDishTypes = new Set(state.recipes.map((item) => item.dishType));
+  activeDishTypes = new Set([...activeDishTypes].filter((type) => availableDishTypes.has(type)));
   saveState();
   renderRecipes();
   renderCalendar();
@@ -564,13 +608,15 @@ function addIngredientRow(name = "", amount = "", resolution = null, group = res
   $("ingredientRows").append(row);
 }
 
-function addStepRow(value = "") {
+function addStepRow(value = "", afterRow = null) {
   stepRowId += 1;
   const row = document.createElement("div");
   row.className = "step-row";
   row.dataset.stepRow = stepRowId;
-  row.innerHTML = `<label><span class="sr-only">作り方の手順</span><textarea class="step-input" rows="2" placeholder="この工程の内容を入力">${escapeHTML(value)}</textarea></label><button type="button" data-remove-step aria-label="この手順を削除">×</button>`;
-  $("stepRows").append(row);
+  row.innerHTML = `<label><span class="sr-only">作り方の手順</span><textarea class="step-input" rows="2" placeholder="この工程の内容を入力">${escapeHTML(value)}</textarea></label><button class="step-remove" type="button" data-remove-step aria-label="この手順を削除">×</button><button class="step-insert" type="button" data-insert-step aria-label="この工程の後に新しい工程を挿入">＋ この後に工程を挿入</button>`;
+  if (afterRow?.parentElement === $("stepRows")) afterRow.after(row);
+  else $("stepRows").append(row);
+  return row;
 }
 
 function renderIngredientSuggestions() {
@@ -586,6 +632,8 @@ function resetRecipeForm() {
   $("formMethodTabs").hidden = false;
   $("recipeTime").value = 20;
   $("recipeServings").value = 2;
+  $("recipeDishType").value = "その他";
+  $("recipeTools").value = "";
   $("ingredientRows").innerHTML = "";
   addIngredientRow();
   addIngredientRow();
@@ -622,6 +670,8 @@ function openRecipeEditor(recipeId) {
   $("recipeName").value = recipe.name;
   $("recipeTime").value = recipe.time;
   $("recipeServings").value = recipe.servings;
+  $("recipeDishType").value = recipe.dishType;
+  $("recipeTools").value = recipe.tools.join("、");
   $("ingredientRows").innerHTML = "";
   recipe.ingredients.forEach((ingredient) => addIngredientRow(ingredient.name, ingredient.amount, null, ingredient.group));
   if (!recipe.ingredients.length) addIngredientRow();
@@ -838,6 +888,8 @@ function submitRecipe(event) {
     name: $("recipeName").value.trim(),
     time: Math.max(1, Number($("recipeTime").value) || 20),
     servings: Math.max(1, Number($("recipeServings").value) || 2),
+    dishType: normalizeDishType($("recipeDishType").value),
+    tools: normalizeRecipeTools($("recipeTools").value),
     ingredients,
     steps: [...document.querySelectorAll(".step-input")].map((input) => input.value.trim()).filter(Boolean),
     lastCooked: existingRecipe?.lastCooked || "",
@@ -885,6 +937,11 @@ document.addEventListener("click", (event) => {
   if (scheduleRecipe) openMealPicker(iso(addDays(today, 1)), scheduleRecipe.dataset.scheduleRecipe);
   const removeRow = event.target.closest("[data-remove-row]");
   if (removeRow) { removeRow.closest(".ingredient-row").remove(); validateRecipeForm(); }
+  const insertStep = event.target.closest("[data-insert-step]");
+  if (insertStep) {
+    const row = addStepRow("", insertStep.closest(".step-row"));
+    row.querySelector(".step-input").focus();
+  }
   const removeStep = event.target.closest("[data-remove-step]");
   if (removeStep) {
     const rows = document.querySelectorAll(".step-row");
@@ -911,8 +968,18 @@ $("tagOptions").addEventListener("change", (event) => {
   event.target.checked ? activeTags.add(event.target.value) : activeTags.delete(event.target.value);
   renderRecipes();
 });
-$("clearFilters").addEventListener("click", () => { activeTags.clear(); renderRecipes(); });
-$("resetSearch").addEventListener("click", () => { $("searchInput").value = ""; activeTags.clear(); renderRecipes(); });
+$("toolOptions").addEventListener("change", (event) => {
+  if (!event.target.matches("input")) return;
+  event.target.checked ? activeTools.add(event.target.value) : activeTools.delete(event.target.value);
+  renderRecipes();
+});
+$("dishTypeOptions").addEventListener("change", (event) => {
+  if (!event.target.matches("input")) return;
+  event.target.checked ? activeDishTypes.add(event.target.value) : activeDishTypes.delete(event.target.value);
+  renderRecipes();
+});
+$("clearFilters").addEventListener("click", () => { activeTags.clear(); activeTools.clear(); activeDishTypes.clear(); renderRecipes(); });
+$("resetSearch").addEventListener("click", () => { $("searchInput").value = ""; activeTags.clear(); activeTools.clear(); activeDishTypes.clear(); renderRecipes(); });
 $("searchInput").addEventListener("input", renderRecipes);
 $("sortSelect").addEventListener("change", renderRecipes);
 $("prevMonth").addEventListener("click", () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderCalendar(); });

@@ -89,7 +89,12 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .filter-button span { min-width: 20px; height: 20px; display: grid; place-items: center; padding: 0 5px; border-radius: 10px; color: white; background: var(--accent); font-size: 11px; }
 .tag-panel { margin-top: 10px; padding: 18px; border: 1px solid var(--separator); border-radius: 14px; background: var(--surface); box-shadow: 0 12px 25px rgb(35 46 38 / .07); }
 .tag-panel-head, .section-row, .result-row, .sheet-heading { display: flex; justify-content: space-between; align-items: center; gap: 18px; }
+.filter-groups { display: grid; gap: 16px; margin-top: 15px; }
+.filter-group + .filter-group { padding-top: 15px; border-top: 1px solid var(--separator); }
+.filter-group h3 { margin: 0; font-size: 12px; }
 .tag-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.filter-group .tag-options { margin-top: 9px; }
+.filter-empty { margin: 0; color: var(--text-secondary); font-size: 11px; }
 .tag-option { position: relative; }
 .tag-option input { position: absolute; opacity: 0; pointer-events: none; }
 .tag-option span, .ingredient-tag { min-height: 30px; display: inline-flex; align-items: center; padding: 3px 11px; border: 1px solid var(--separator); border-radius: 999px; color: var(--text-secondary); background: var(--surface); font-size: 12px; }
@@ -106,6 +111,10 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .recipe-card-button:focus-visible { border-radius: 10px; }
 .recipe-card-content { min-width: 0; }
 .recipe-card-content h2 { margin: 0 0 10px; font-size: 18px; line-height: 1.35; letter-spacing: -.02em; }
+.recipe-facets { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.dish-type-tag, .tool-tag { min-height: 24px; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 650; }
+.dish-type-tag { color: var(--accent-strong); background: var(--accent-soft); }
+.tool-tag { border: 1px solid var(--separator); color: var(--text-secondary); background: transparent; }
 .recipe-summary { display: grid; justify-items: end; gap: 5px; }
 .time-pill { min-height: 28px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border: 1px solid var(--separator); border-radius: 999px; color: var(--text); background: var(--surface); font-size: 11px; font-weight: 680; }
 .time-pill svg { width: 14px; }
@@ -181,6 +190,9 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .detail-actions .edit-recipe-button { margin-left: auto; }
 .detail-section { margin-top: 26px; }
 .detail-section h3 { margin: 0 0 12px; font-size: 17px; }
+.compact-detail-section { margin-top: -6px; }
+.detail-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.detail-tags .tool-tag { min-height: 30px; padding: 3px 11px; font-size: 12px; }
 .ingredient-list { margin: 0; padding: 0; list-style: none; }
 .ingredient-list li { min-height: 43px; display: flex; justify-content: space-between; gap: 18px; align-items: center; border-bottom: 1px solid var(--separator); font-size: 14px; }
 .ingredient-list span:last-child { color: var(--text-secondary); }
@@ -242,9 +254,10 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .field.full { grid-column: 1 / -1; }
 .field > span { font-size: 12px; font-weight: 650; }
 .field b { color: var(--danger); font-size: 9px; }
-.field input, .field textarea, .unit-input { width: 100%; border: 1px solid var(--separator); border-radius: 10px; color: var(--text); background: var(--bg); }
-.field input, .unit-input { min-height: 43px; padding: 0 12px; }
+.field input, .field textarea, .field select, .unit-input { width: 100%; border: 1px solid var(--separator); border-radius: 10px; color: var(--text); background: var(--bg); }
+.field input, .field select, .unit-input { min-height: 43px; padding: 0 12px; }
 .field textarea { padding: 10px 12px; resize: vertical; }
+.field small { color: var(--text-secondary); font-size: 10px; line-height: 1.45; }
 .unit-input { display: flex; align-items: center; }
 .unit-input input { width: auto; min-width: 0; min-height: 0; flex: 1; padding: 0; border: 0; outline: 0; background: transparent; }
 .unit-input em { flex: 0 0 auto; color: var(--text-secondary); font-size: 12px; font-style: normal; white-space: nowrap; }
@@ -266,8 +279,11 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .step-row::before { content: counter(recipe-step); width: 28px; height: 28px; display: grid; place-items: center; margin-top: 7px; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); font-size: 12px; font-weight: 750; }
 .step-row label { min-width: 0; }
 .step-input { width: 100%; min-height: 46px; padding: 10px 11px; resize: vertical; border: 1px solid var(--separator); border-radius: 10px; color: var(--text); background: var(--bg); line-height: 1.5; }
-.step-row > button { width: 38px; height: 38px; margin-top: 4px; border: 0; border-radius: 50%; color: var(--text-secondary); background: transparent; cursor: pointer; }
-.step-row > button:hover { color: var(--danger); background: color-mix(in srgb, var(--danger), transparent 92%); }
+.step-remove { width: 38px; height: 38px; margin-top: 4px; border: 0; border-radius: 50%; color: var(--text-secondary); background: transparent; cursor: pointer; }
+.step-remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger), transparent 92%); }
+.step-insert { min-height: 44px; grid-column: 2 / 3; justify-self: start; margin: -3px 0 -6px; padding: 0 9px; border: 0; border-radius: 9px; color: var(--accent-strong); background: transparent; cursor: pointer; font-size: 11px; font-weight: 650; }
+.step-insert:hover { background: var(--accent-soft); }
+.step-insert:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 .ai-notice { margin: 15px 0 0; }
 .ai-notice > span { color: var(--accent); font-size: 20px; }
 .dialog-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 9px; margin-top: 24px; padding: 16px 26px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--separator); background: color-mix(in srgb, var(--surface), transparent 4%); backdrop-filter: blur(16px); }
