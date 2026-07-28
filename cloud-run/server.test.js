@@ -38,6 +38,25 @@ test("構造化された工程を文字列へ正規化しobject表示を防ぐ",
   }).steps, ["材料を重ねる。", "弱火で15分加熱する。"]) ;
 });
 
+test("空のgroup指定で直前の材料グループを終了する", () => {
+  const normalized = normalizeGeneratedRecipe({
+    name: "ポテト料理",
+    ingredients: [
+      { name: "水", amount: "100ml", group: "A" },
+      { name: "塩", amount: "小さじ1/2", group: "A" },
+      { name: "マヨネーズ", amount: "適量", group: "" },
+      { name: "ピザチーズ", amount: "適量", group: "" }
+    ],
+    steps: ["調理する。"]
+  });
+  assert.deepEqual(normalized.ingredients.map(({ name, group }) => ({ name, group })), [
+    { name: "水", group: "A" },
+    { name: "塩", group: "A" },
+    { name: "マヨネーズ", group: "" },
+    { name: "ピザチーズ", group: "" }
+  ]);
+});
+
 test("ブログの【材料】表記を中心に本文を切り出す", () => {
   const excerpt = sourceExcerpt(`${"前置き".repeat(30000)}\n【材料】（2人分）\n玉ねぎ 1個\n【作り方】\n炒める。`);
   assert.match(excerpt, /【材料】/);

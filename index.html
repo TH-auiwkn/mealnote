@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#f6f6f2" />
     <meta name="description" content="レシピ、献立、買い物をひとつにつなぐ献立管理アプリ Mealnote" />
     <title>Mealnote — 献立が、すっと決まる。</title>
-    <link rel="stylesheet" href="styles.css?v=16" />
-    <script src="config.js?v=16"></script>
-    <script src="cloud-sync.js?v=16" defer></script>
-    <script src="recipe-ocr.js?v=16" defer></script>
-    <script src="gemma-recipe.js?v=16" defer></script>
-    <script src="app.js?v=16" defer></script>
+    <link rel="stylesheet" href="styles.css?v=17" />
+    <script src="config.js?v=17"></script>
+    <script src="cloud-sync.js?v=17" defer></script>
+    <script src="recipe-ocr.js?v=17" defer></script>
+    <script src="gemma-recipe.js?v=17" defer></script>
+    <script src="app.js?v=17" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">メインコンテンツへ</a>
@@ -133,6 +133,13 @@
       <div class="dialog-shell detail-shell">
         <button class="dialog-close icon-button" type="button" data-close aria-label="閉じる"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         <div id="recipeDetail"></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal source-image-modal" id="sourceImageDialog" aria-labelledby="sourceImageTitle">
+      <div class="dialog-shell source-image-shell">
+        <header class="source-image-header"><h2 id="sourceImageTitle">取り込み元画像</h2><button class="icon-button" type="button" data-close aria-label="拡大画像を閉じる"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+        <div class="source-image-stage"><img id="sourceImagePreview" alt="" /></div>
       </div>
     </dialog>
 

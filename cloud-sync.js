@@ -7,8 +7,10 @@
   let appModule;
   let authModule;
   let firestoreModule;
+  let storageModule;
   let auth;
   let db;
+  let storage;
   let currentUser = null;
   let activeUserId = "";
   let activeDocument = null;
@@ -32,6 +34,51 @@
     root.dispatchEvent(new CustomEvent("mealnote-cloud-status", { detail: status }));
   }
 
+  function imageDataUrl(value = "") {
+    return /^data:image\/(?:jpeg|png|webp);base64,/i.test(value) ? value : "";
+  }
+
+  async function uploadRecipeImage(recipeId, dataUrl, name = "取り込み元画像") {
+    await ready;
+    if (!currentUser) return null;
+    const safeDataUrl = imageDataUrl(dataUrl);
+    if (!safeDataUrl) throw new Error("保存できる画像形式ではありません");
+    const response = await fetch(safeDataUrl);
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/") || blob.size > 5 * 1024 * 1024) throw new Error("画像は5MB以下にしてください");
+    const safeRecipeId = String(recipeId).replace(/[^a-z0-9_-]/gi, "-").slice(0, 120);
+    const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+    const storagePath = `recipeSources/${currentUser.uid}/${safeRecipeId}.${extension}`;
+    const imageRef = storageModule.ref(storage, storagePath);
+    await storageModule.uploadBytes(imageRef, blob, { contentType: blob.type, cacheControl: "public,max-age=31536000" });
+    return {
+      type: "image",
+      url: await storageModule.getDownloadURL(imageRef),
+      storagePath,
+      name: String(name || "取り込み元画像").slice(0, 120)
+    };
+  }
+
+  async function prepareStateForCloud(nextState) {
+    const prepared = JSON.parse(JSON.stringify(nextState));
+    for (const recipe of prepared.recipes || []) {
+      const source = recipe?.source;
+      if (source?.type !== "image" || !imageDataUrl(source.dataUrl)) continue;
+      const uploaded = await uploadRecipeImage(recipe.id, source.dataUrl, source.name);
+      if (uploaded) recipe.source = uploaded;
+    }
+    return prepared;
+  }
+
+  async function deleteRecipeImage(source) {
+    await ready;
+    if (!currentUser || source?.type !== "image") return;
+    const prefix = `recipeSources/${currentUser.uid}/`;
+    if (!String(source.storagePath || "").startsWith(prefix)) return;
+    try { await storageModule.deleteObject(storageModule.ref(storage, source.storagePath)); }
+    catch (error) { if (error?.code !== "storage/object-not-found") throw error; }
+  }
+
   function clearConnection() {
     if (unsubscribeSnapshot) unsubscribeSnapshot();
     unsubscribeSnapshot = null;
@@ -46,13 +93,15 @@
   async function writeDocument(nextState) {
     if (!activeDocument || !currentUser) return;
     emit({ phase: "syncing", message: "変更を保存しています" });
+    const preparedState = await prepareStateForCloud(nextState);
     await firestoreModule.setDoc(activeDocument, {
-      state: nextState,
+      state: preparedState,
       schemaVersion: 1,
       clientId,
       updatedAt: firestoreModule.serverTimestamp()
     });
     emit({ phase: "synced", message: "クラウドと同期済み" });
+    return preparedState;
   }
 
   async function flush() {
@@ -62,7 +111,8 @@
     const nextState = queuedState;
     queuedState = null;
     try {
-      await writeDocument(nextState);
+      const preparedState = await writeDocument(nextState);
+      if (preparedState && JSON.stringify(preparedState) !== JSON.stringify(nextState)) remoteHandler?.(preparedState, { sourceMigration: true });
     } catch (error) {
       queuedState = nextState;
       emit({ phase: "error", message: "クラウドへの保存に失敗しました", error });
@@ -72,15 +122,17 @@
 
   const ready = (async () => {
     if (!config?.apiKey || !config?.projectId) throw new Error("Firebaseの設定がありません");
-    [appModule, authModule, firestoreModule] = await Promise.all([
+    [appModule, authModule, firestoreModule, storageModule] = await Promise.all([
       import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-app.js`),
       import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-auth.js`),
-      import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-firestore.js`)
+      import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-firestore.js`),
+      import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-storage.js`)
     ]);
     const firebaseApp = appModule.initializeApp(config);
     auth = authModule.getAuth(firebaseApp);
     auth.languageCode = "ja";
     db = firestoreModule.getFirestore(firebaseApp);
+    storage = storageModule.getStorage(firebaseApp);
     authModule.onAuthStateChanged(auth, (user) => {
       const changedUser = currentUser?.uid !== user?.uid;
       currentUser = user;
@@ -111,7 +163,9 @@
         remoteHandler?.(snapshot.data().state, { initial: true });
       } else {
         source = "device";
-        await writeDocument(JSON.parse(JSON.stringify(localState)));
+        const deviceState = JSON.parse(JSON.stringify(localState));
+        const preparedState = await writeDocument(deviceState);
+        if (preparedState && JSON.stringify(preparedState) !== JSON.stringify(deviceState)) remoteHandler?.(preparedState, { sourceMigration: true });
       }
 
       unsubscribeSnapshot = firestoreModule.onSnapshot(activeDocument, (nextSnapshot) => {
@@ -166,6 +220,8 @@
     flush,
     signIn,
     signOut,
+    uploadRecipeImage,
+    deleteRecipeImage,
     getStatus: () => ({ ...status })
   };
 })(window);
