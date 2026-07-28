@@ -61,13 +61,22 @@
 
   async function prepareStateForCloud(nextState) {
     const prepared = JSON.parse(JSON.stringify(nextState));
+    let migrated = false;
     for (const recipe of prepared.recipes || []) {
       const source = recipe?.source;
       if (source?.type !== "image" || !imageDataUrl(source.dataUrl)) continue;
-      const uploaded = await uploadRecipeImage(recipe.id, source.dataUrl, source.name);
-      if (uploaded) recipe.source = uploaded;
+      try {
+        const uploaded = await uploadRecipeImage(recipe.id, source.dataUrl, source.name);
+        if (uploaded) {
+          recipe.source = uploaded;
+          migrated = true;
+        } else delete recipe.source;
+      } catch {
+        // Keep the original image on this device without blocking other cloud data.
+        delete recipe.source;
+      }
     }
-    return prepared;
+    return { state: prepared, migrated };
   }
 
   async function deleteRecipeImage(source) {
@@ -93,15 +102,15 @@
   async function writeDocument(nextState) {
     if (!activeDocument || !currentUser) return;
     emit({ phase: "syncing", message: "変更を保存しています" });
-    const preparedState = await prepareStateForCloud(nextState);
+    const prepared = await prepareStateForCloud(nextState);
     await firestoreModule.setDoc(activeDocument, {
-      state: preparedState,
+      state: prepared.state,
       schemaVersion: 1,
       clientId,
       updatedAt: firestoreModule.serverTimestamp()
     });
     emit({ phase: "synced", message: "クラウドと同期済み" });
-    return preparedState;
+    return prepared;
   }
 
   async function flush() {
@@ -111,8 +120,8 @@
     const nextState = queuedState;
     queuedState = null;
     try {
-      const preparedState = await writeDocument(nextState);
-      if (preparedState && JSON.stringify(preparedState) !== JSON.stringify(nextState)) remoteHandler?.(preparedState, { sourceMigration: true });
+      const prepared = await writeDocument(nextState);
+      if (prepared?.migrated) remoteHandler?.(prepared.state, { sourceMigration: true });
     } catch (error) {
       queuedState = nextState;
       emit({ phase: "error", message: "クラウドへの保存に失敗しました", error });
@@ -164,8 +173,8 @@
       } else {
         source = "device";
         const deviceState = JSON.parse(JSON.stringify(localState));
-        const preparedState = await writeDocument(deviceState);
-        if (preparedState && JSON.stringify(preparedState) !== JSON.stringify(deviceState)) remoteHandler?.(preparedState, { sourceMigration: true });
+        const prepared = await writeDocument(deviceState);
+        if (prepared?.migrated) remoteHandler?.(prepared.state, { sourceMigration: true });
       }
 
       unsubscribeSnapshot = firestoreModule.onSnapshot(activeDocument, (nextSnapshot) => {

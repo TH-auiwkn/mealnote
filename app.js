@@ -239,6 +239,14 @@ function renderAllData() {
 
 function applyCloudState(remoteState, context = {}) {
   const nextState = normalizeState(remoteState);
+  const localImageSources = new Map(state.recipes
+    .filter((recipe) => recipe.source?.type === "image" && recipe.source.dataUrl)
+    .map((recipe) => [recipe.id, recipe.source]));
+  nextState.recipes = nextState.recipes.map((recipe) => (
+    !recipe.source && localImageSources.has(recipe.id)
+      ? { ...recipe, source: localImageSources.get(recipe.id) }
+      : recipe
+  ));
   if (JSON.stringify(nextState) === JSON.stringify(state)) return;
   applyingCloudState = true;
   state = nextState;
