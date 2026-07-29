@@ -438,13 +438,24 @@ function renderTags() {
   $("dishTypeOptions").innerHTML = DISH_TYPES.map((type) => filterOptionMarkup(type, dishTypeCounts.get(type) || 0, activeDishTypes)).join("");
 }
 
+function matchesRecipeQuery(recipe, query) {
+  const normalizedQuery = String(query || "").normalize("NFKC").trim().toLocaleLowerCase("ja");
+  if (!normalizedQuery) return true;
+  const searchableValues = [
+    recipe.name,
+    recipe.dishType,
+    ...recipe.ingredients.map((item) => item.name),
+    ...recipe.tools
+  ];
+  return searchableValues.some((value) => String(value || "").normalize("NFKC").toLocaleLowerCase("ja").includes(normalizedQuery));
+}
+
 function filteredRecipes() {
-  const query = $("searchInput").value.trim().toLocaleLowerCase("ja");
+  const query = $("searchInput").value;
   const sort = $("sortSelect").value;
   const recipes = state.recipes.filter((recipe) => {
     const ingredientNames = recipe.ingredients.map((item) => item.name);
-    const toolNames = recipe.tools.map((tool) => tool.toLocaleLowerCase("ja"));
-    const matchesQuery = !query || recipe.name.toLocaleLowerCase("ja").includes(query) || ingredientNames.some((name) => name.toLocaleLowerCase("ja").includes(query)) || toolNames.some((tool) => tool.includes(query));
+    const matchesQuery = matchesRecipeQuery(recipe, query);
     const matchesTags = [...activeTags].every((tag) => ingredientNames.includes(tag));
     const matchesTools = activeTools.size === 0 || [...activeTools].some((tool) => recipe.tools.includes(tool));
     const matchesDishTypes = activeDishTypes.size === 0 || activeDishTypes.has(recipe.dishType);
@@ -612,7 +623,7 @@ function removeMeal(date, recipeId) {
 }
 
 function renderMealPicker(preferred = "") {
-  const query = $("mealSearch").value.trim().toLocaleLowerCase("ja");
+  const query = $("mealSearch").value;
   const scheduledIds = state.schedule[selectedMealDate] || [];
   const scheduledRecipes = scheduledIds.map((recipeId) => state.recipes.find((item) => item.id === recipeId)).filter(Boolean);
   const isFull = scheduledIds.length >= MAX_MEALS_PER_DAY;
@@ -622,7 +633,7 @@ function renderMealPicker(preferred = "") {
       <span>${escapeHTML(recipe.name)}</span>
       <button class="meal-picker-remove" type="button" data-remove-meal-date="${escapeAttr(selectedMealDate)}" data-remove-meal-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.name)}をこの日の献立から削除">削除</button>
     </div>`).join("") : `<p class="scheduled-meal-empty">まだ献立はありません。</p>`;
-  let recipes = state.recipes.filter((item) => item.name.toLocaleLowerCase("ja").includes(query) || item.ingredients.some((ingredient) => ingredient.name.includes(query)));
+  let recipes = state.recipes.filter((recipe) => matchesRecipeQuery(recipe, query));
   if (preferred) recipes = recipes.sort((item) => item.id === preferred ? -1 : 0);
   $("mealPickerList").innerHTML = recipes.length ? recipes.map((recipe) => `
     <button class="picker-item" type="button" data-pick-recipe="${escapeAttr(recipe.id)}"${scheduledIds.includes(recipe.id) || isFull ? " disabled" : ""}>
