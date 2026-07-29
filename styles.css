@@ -147,6 +147,8 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .meal-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meal-remove { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 7px; color: var(--accent-strong); background: transparent; cursor: pointer; font-size: 17px; }
 .meal-remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger), transparent 91%); }
+.meal-more { width: 100%; min-height: 28px; margin-top: 4px; padding: 2px 6px; border: 0; border-radius: 7px; color: var(--text-secondary); background: var(--surface-muted); cursor: pointer; font-size: 10px; font-weight: 650; text-align: left; }
+.meal-more:hover { color: var(--accent-strong); background: var(--accent-soft); }
 .day-add { opacity: 0; color: var(--accent); font-size: 18px; }
 .calendar-day:hover .day-add, .day-trigger:focus-visible .day-add { opacity: 1; }
 .calendar-hint { margin: 13px 0 0; color: var(--text-secondary); font-size: 12px; text-align: center; }
@@ -336,8 +338,22 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .date-picker-field input { min-height: 48px; padding: 0 12px; }
 .modal-search { margin: 0; }
 .picker-list { max-height: 55vh; overflow: auto; padding: 0 14px 10px; }
+.picker-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.picker-section-heading h3 { margin: 0; font-size: 13px; }
+.picker-section-heading span { color: var(--text-secondary); font-size: 10px; }
+.scheduled-meals-panel { margin: 0 26px 17px; padding: 14px; border-radius: 14px; background: var(--surface-muted); }
+.scheduled-meal-list { display: grid; gap: 2px; margin-top: 8px; }
+.scheduled-meal-item { min-height: 44px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; border-top: 1px solid var(--separator); font-size: 12px; }
+.scheduled-meal-item:first-child { border-top: 0; }
+.scheduled-meal-item span { overflow-wrap: anywhere; }
+.meal-picker-remove { min-width: 52px; min-height: 36px; padding: 0 8px; border: 0; border-radius: 8px; color: var(--danger); background: transparent; cursor: pointer; font-size: 11px; font-weight: 650; }
+.meal-picker-remove:hover { background: color-mix(in srgb, var(--danger), transparent 92%); }
+.scheduled-meal-empty { margin: 9px 0 1px; color: var(--text-secondary); font-size: 11px; }
+.recipe-picker-heading { margin: 0 26px 5px; }
 .picker-item { width: 100%; min-height: 68px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 13px; padding: 8px 12px; border: 0; border-radius: 13px; background: transparent; cursor: pointer; text-align: left; }
 .picker-item:hover { background: var(--surface-muted); }
+.picker-item:disabled { color: var(--text-secondary); cursor: default; opacity: .72; }
+.picker-item:disabled:hover { background: transparent; }
 .picker-item strong, .picker-item small { display: block; }
 .picker-item small { margin-top: 3px; color: var(--text-secondary); font-size: 10px; }
 .picker-add { color: var(--accent); font-size: 22px; }
@@ -435,6 +451,7 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
   #view-calendar .meal-chip { grid-template-columns: minmax(0, 1fr) 18px; gap: 0; margin-top: 1px; padding: 2px 1px 2px 4px; border-radius: 5px; font-size: 8px; line-height: 1.15; }
   #view-calendar .meal-chip span { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   #view-calendar .meal-remove { width: 18px; height: 24px; border-radius: 4px; font-size: 14px; }
+  #view-calendar .meal-more { min-height: 17px; margin-top: 1px; padding: 1px 3px; border-radius: 4px; font-size: 7px; line-height: 1.15; }
   #view-calendar .calendar-hint { display: none; }
   .shopping-sheet { padding: 19px 16px; }
   .detail-body { padding: 22px 20px 28px; }
@@ -456,6 +473,8 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
   .dialog-actions button { flex: 1; }
   .drop-zone { min-height: 230px; }
   .picker-controls { grid-template-columns: 1fr; margin-left: 18px; margin-right: 18px; }
+  .scheduled-meals-panel { margin-left: 18px; margin-right: 18px; }
+  .recipe-picker-heading { margin-left: 18px; margin-right: 18px; }
   .manager-shell > p, .manager-shell > form, .custom-list { margin-left: 18px; margin-right: 18px; }
   .account-body { padding-left: 18px; padding-right: 18px; }
   .toast { bottom: calc(82px + env(safe-area-inset-bottom)); }

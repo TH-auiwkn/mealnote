@@ -222,6 +222,11 @@
           <label class="field date-picker-field"><span>献立の日付</span><input id="mealDateInput" type="date" /></label>
           <label class="search-field modal-search"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span class="sr-only">レシピを検索</span><input id="mealSearch" type="search" placeholder="レシピを検索" /></label>
         </div>
+        <section class="scheduled-meals-panel" aria-labelledby="scheduledMealsTitle">
+          <div class="picker-section-heading"><h3 id="scheduledMealsTitle">この日の献立</h3><span id="mealPickerCount">0 / 10品</span></div>
+          <div class="scheduled-meal-list" id="scheduledMealList"></div>
+        </section>
+        <div class="picker-section-heading recipe-picker-heading"><h3>レシピを追加</h3><span>同じ日に10品まで</span></div>
         <div class="picker-list" id="mealPickerList"></div>
       </div>
     </dialog>
