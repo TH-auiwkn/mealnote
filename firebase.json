@@ -1,10 +1,16 @@
 {
-  "firestore": {
-    "database": "(default)",
-    "location": "asia-northeast1",
-    "rules": "firestore.rules"
-  },
-  "storage": {
-    "rules": "storage.rules"
+  "hosting": {
+    "public": "firebase-public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/healthz",
+        "run": { "serviceId": "mealnote-gemma-api", "region": "us-central1", "pinTag": true }
+      },
+      {
+        "source": "/v1/**",
+        "run": { "serviceId": "mealnote-gemma-api", "region": "us-central1", "pinTag": true }
+      }
+    ]
   }
 }
