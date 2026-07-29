@@ -1,5 +1,5 @@
 // Cloud Runのデプロイ後に、公開されたサービスURLへ置き換えます。
-window.MEALNOTE_API_BASE = "https://gen-lang-client-0350460211.web.app";
+window.MEALNOTE_API_BASE = "https://us-central1-gen-lang-client-0350460211.cloudfunctions.net/mealnoteGemmaApi";
 
 // Firebase Web SDK用の公開設定です。APIキーは識別子であり、秘密鍵ではありません。
 window.MEALNOTE_FIREBASE_CONFIG = {
