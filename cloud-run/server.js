@@ -282,9 +282,12 @@ export function createApp({ extractRecipe, fetchRecipe = readPublicRecipe, now =
   return app;
 }
 
-if (process.env.NODE_ENV !== "test") {
+const deployedApp = process.env.NODE_ENV === "test" ? null : createApp();
+export const mealnoteGemmaApi = deployedApp;
+
+if (deployedApp && !process.env.FUNCTION_TARGET) {
   const port = Number(process.env.PORT || 8080);
-  createApp().listen(port, "0.0.0.0", () => console.log(`mealnote-gemma-api listening on ${port}`));
+  deployedApp.listen(port, "0.0.0.0", () => console.log(`mealnote-gemma-api listening on ${port}`));
 }
 
 export { normalizeGeneratedRecipe, normalizeGeneratedRecipes, normalizeGeneratedSteps, normalizeUrl, parseRecipeText, sourceExcerpt };

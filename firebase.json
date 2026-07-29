@@ -5,11 +5,11 @@
     "rewrites": [
       {
         "source": "/healthz",
-        "run": { "serviceId": "mealnote-gemma-api", "region": "us-central1" }
+        "function": { "functionId": "mealnoteGemmaApi", "region": "us-central1" }
       },
       {
         "source": "/v1/**",
-        "run": { "serviceId": "mealnote-gemma-api", "region": "us-central1" }
+        "function": { "functionId": "mealnoteGemmaApi", "region": "us-central1" }
       }
     ]
   }
