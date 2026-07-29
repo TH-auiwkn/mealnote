@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createApp, normalizeGeneratedRecipe, normalizeGeneratedSteps, normalizeUrl, parseRecipeText, sourceExcerpt } from "./server.js";
+import { createApp, normalizeGeneratedRecipe, normalizeGeneratedRecipes, normalizeGeneratedSteps, normalizeUrl, parseRecipeText, sourceExcerpt } from "./server.js";
 
 const recipe = { name: "テスト料理", time: 10, servings: 2, ingredients: [{ name: "卵", amount: "2個", group: "A" }], steps: ["焼く。"] };
 
@@ -57,6 +57,16 @@ test("空のgroup指定で直前の材料グループを終了する", () => {
   ]);
 });
 
+test("同じページの複数レシピを別々に正規化する", () => {
+  const recipes = normalizeGeneratedRecipes({ recipes: [
+    { name: "にんじんのデリサラダ", ingredients: [{ name: "にんじん", amount: "1本", group: "" }], steps: ["細切りにする。"] },
+    { name: "ナスとトマトのオイルポン酢", ingredients: [{ name: "なす", amount: "1本", group: "" }], steps: ["焼いて和える。"] }
+  ] });
+  assert.equal(recipes.length, 2);
+  assert.equal(recipes[0].name, "にんじんのデリサラダ");
+  assert.equal(recipes[1].name, "ナスとトマトのオイルポン酢");
+});
+
 test("ブログの【材料】表記を中心に本文を切り出す", () => {
   const excerpt = sourceExcerpt(`${"前置き".repeat(30000)}\n【材料】（2人分）\n玉ねぎ 1個\n【作り方】\n炒める。`);
   assert.match(excerpt, /【材料】/);
@@ -92,4 +102,22 @@ test("URL解析APIは非公開URLと未許可Originを拒否する", async (t) =
     body: JSON.stringify({ url: "https://example.com/recipe" })
   });
   assert.equal(originResponse.status, 403);
+});
+
+test("URL解析APIは複数レシピを返す", async (t) => {
+  const extracted = [
+    { name: "料理A", time: 10, servings: 2, ingredients: [{ name: "卵", amount: "1個", group: "" }], steps: ["焼く。"] },
+    { name: "料理B", time: 15, servings: 2, ingredients: [{ name: "豆腐", amount: "1丁", group: "" }], steps: ["煮る。"] }
+  ];
+  const { server, base } = await startApp({ extractRecipe: async (_parts, options) => options?.multiple ? extracted : extracted[0] });
+  t.after(() => server.close());
+  const response = await fetch(`${base}/v1/recipes/extract-url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "https://th-auiwkn.github.io" },
+    body: JSON.stringify({ url: "https://example.com/recipes" })
+  });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.recipes.length, 2);
+  assert.equal(payload.recipe.name, "料理A");
 });

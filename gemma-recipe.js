@@ -92,7 +92,7 @@
   async function request(path, body) {
     if (!API_BASE) throw new Error("Gemma 4解析サービスの接続先が設定されていません");
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000);
+    const timeout = setTimeout(() => controller.abort(), 120000);
     try {
       const response = await fetch(`${API_BASE}${path}`, {
         method: "POST",
@@ -106,8 +106,8 @@
         if (response.status === 429) throw new Error(payload?.error || "Gemma 4が混み合っています。少し待ってからもう一度お試しください");
         throw new Error(payload?.error || `Gemma 4解析サービスでエラーが発生しました（${response.status}）`);
       }
-      if (!payload?.recipe) throw new Error("Gemma 4から抽出結果が返りませんでした");
-      return payload.recipe;
+      if (!payload?.recipe && !payload?.recipes?.length) throw new Error("Gemma 4から抽出結果が返りませんでした");
+      return payload;
     } catch (error) {
       if (error?.name === "AbortError") throw new Error("Gemma 4の解析がタイムアウトしました");
       if (/Failed to fetch|NetworkError|Load failed/i.test(error?.message || "")) throw new Error("Gemma 4解析サービスへ接続できませんでした");
@@ -119,15 +119,18 @@
 
   async function analyzeImage(file, knownIngredients = []) {
     const data = await fileAsBase64(file);
-    const raw = await request("/v1/recipes/extract-image", {
+    const payload = await request("/v1/recipes/extract-image", {
       image: { mimeType: file.type || "image/jpeg", data }
     });
-    return normalizeRecipe(raw, knownIngredients);
+    return normalizeRecipe(payload.recipe, knownIngredients);
   }
 
   async function analyzeUrl(pageUrl, knownIngredients = []) {
-    const raw = await request("/v1/recipes/extract-url", { url: pageUrl });
-    return { ...normalizeRecipe(raw, knownIngredients), sourceUrl: pageUrl };
+    const payload = await request("/v1/recipes/extract-url", { url: pageUrl });
+    const recipes = Array.isArray(payload.recipes) && payload.recipes.length ? payload.recipes : [payload.recipe];
+    return recipes
+      .filter(Boolean)
+      .map((recipe) => ({ ...normalizeRecipe(recipe, knownIngredients), sourceUrl: pageUrl }));
   }
 
   root.GemmaRecipe = {

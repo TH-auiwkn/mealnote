@@ -64,9 +64,15 @@
     let migrated = false;
     for (const recipe of prepared.recipes || []) {
       const source = recipe?.source;
-      if (source?.type !== "image" || !imageDataUrl(source.dataUrl)) continue;
+      if (source?.type !== "image") continue;
+      let localDataUrl = imageDataUrl(source.dataUrl);
+      if (!localDataUrl && source.localId) {
+        try { localDataUrl = await root.MealnoteImages?.getDataUrl?.(source) || ""; }
+        catch {}
+      }
+      if (!localDataUrl) continue;
       try {
-        const uploaded = await uploadRecipeImage(recipe.id, source.dataUrl, source.name);
+        const uploaded = await uploadRecipeImage(recipe.id, localDataUrl, source.name);
         if (uploaded) {
           recipe.source = uploaded;
           migrated = true;
@@ -140,7 +146,9 @@
     const firebaseApp = appModule.initializeApp(config);
     auth = authModule.getAuth(firebaseApp);
     auth.languageCode = "ja";
-    db = firestoreModule.getFirestore(firebaseApp);
+    db = firestoreModule.initializeFirestore(firebaseApp, {
+      localCache: firestoreModule.persistentLocalCache({ tabManager: firestoreModule.persistentMultipleTabManager() })
+    });
     storage = storageModule.getStorage(firebaseApp);
     authModule.onAuthStateChanged(auth, (user) => {
       const changedUser = currentUser?.uid !== user?.uid;
@@ -198,7 +206,7 @@
     if (!activeDocument || !currentUser) return;
     queuedState = JSON.parse(JSON.stringify(nextState));
     clearTimeout(writeTimer);
-    writeTimer = setTimeout(() => { flush().catch(() => {}); }, 550);
+    writeTimer = setTimeout(() => { flush().catch(() => {}); }, 0);
   }
 
   async function signIn() {

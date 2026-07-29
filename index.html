@@ -6,12 +6,13 @@
     <meta name="theme-color" content="#f6f6f2" />
     <meta name="description" content="レシピ、献立、買い物をひとつにつなぐ献立管理アプリ Mealnote" />
     <title>Mealnote — 献立が、すっと決まる。</title>
-    <link rel="stylesheet" href="styles.css?v=18" />
-    <script src="config.js?v=18"></script>
-    <script src="cloud-sync.js?v=18" defer></script>
-    <script src="recipe-ocr.js?v=18" defer></script>
-    <script src="gemma-recipe.js?v=18" defer></script>
-    <script src="app.js?v=18" defer></script>
+    <link rel="stylesheet" href="styles.css?v=19" />
+    <script src="config.js?v=19"></script>
+    <script src="image-store.js?v=19" defer></script>
+    <script src="cloud-sync.js?v=19" defer></script>
+    <script src="recipe-ocr.js?v=19" defer></script>
+    <script src="gemma-recipe.js?v=19" defer></script>
+    <script src="app.js?v=19" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">メインコンテンツへ</a>
@@ -174,6 +175,11 @@
             </div>
             <p class="privacy-note"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>公開URLはCloud RunからJina Readerを利用して取得し、Vertex AIのGemma 4で解析します。</p>
           </section>
+          <section class="recipe-choice-panel" id="recipeChoicePanel" hidden aria-labelledby="recipeChoiceTitle">
+            <div class="section-row"><div><h3 id="recipeChoiceTitle">取り込むレシピを選択</h3><p>複数選択した場合も、1件ずつ内容を確認してから保存できます。</p></div></div>
+            <div class="recipe-choice-list" id="recipeChoiceList"></div>
+            <button class="primary-button" id="confirmRecipeChoices" type="button">選択したレシピを確認</button>
+          </section>
           <section id="manualFormPanel" role="tabpanel" aria-labelledby="manualFormTab" hidden>
             <div class="form-grid">
               <label class="field full"><span>料理名 <b>必須</b></span><input id="recipeName" name="name" required placeholder="例：鮭の照り焼き" /></label>
@@ -192,6 +198,15 @@
               <div class="section-row"><div><h3>作り方</h3><p>1工程ずつ入力し、必要な位置に新しい工程を挿入できます。</p></div></div>
               <div class="step-rows" id="stepRows"></div>
               <button class="add-row-button" type="button" id="addStepRow">＋ 手順を追加</button>
+            </div>
+            <div class="source-editor">
+              <div class="section-row"><div><h3>取り込み元</h3><p>登録後でも写真またはWebサイトを追加・変更できます。</p></div></div>
+              <div class="source-attachment-summary" id="sourceAttachmentSummary"><span class="source-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 11l2.5 2.5L14 10l4 5"/></svg></span><span><strong>取り込み元はありません</strong><small>写真またはURLを追加できます</small></span></div>
+              <div class="source-attachment-actions">
+                <label class="secondary-button source-photo-button">写真を追加・変更<input id="sourcePhotoInput" type="file" accept="image/*" /></label>
+                <div class="source-url-control"><label class="field"><span>WebサイトのURL</span><input id="sourceUrlInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com/recipe" /></label><button class="secondary-button" id="attachSourceUrl" type="button">URLを設定</button></div>
+                <button class="text-button destructive-text" id="removeRecipeSource" type="button" hidden>取り込み元を削除</button>
+              </div>
             </div>
             <div class="ai-notice" id="aiNotice" hidden><span aria-hidden="true">✦</span><p><strong id="aiNoticeTitle">写真から候補を抽出しました</strong><small id="aiNoticeDetail">文字認識の結果です。保存前に内容を確認してください。</small></p></div>
           </section>

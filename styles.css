@@ -272,6 +272,14 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .url-icon { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: var(--accent); background: var(--accent-soft); }
 .url-icon svg { width: 22px; }
 .url-import-button { justify-self: start; }
+.recipe-choice-panel { display: grid; gap: 16px; }
+.recipe-choice-list { display: grid; gap: 8px; }
+.recipe-choice-item { min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--separator); border-radius: 12px; background: var(--bg); cursor: pointer; }
+.recipe-choice-item:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.recipe-choice-item input { width: 20px; height: 20px; flex: 0 0 auto; accent-color: var(--accent); }
+.recipe-choice-item span, .recipe-choice-item strong, .recipe-choice-item small { display: block; min-width: 0; }
+.recipe-choice-item strong { font-size: 13px; }
+.recipe-choice-item small { margin-top: 3px; color: var(--text-secondary); font-size: 10px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .field { display: grid; gap: 6px; }
 .field.full { grid-column: 1 / -1; }
@@ -307,6 +315,19 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 .step-insert { min-height: 44px; grid-column: 2 / 3; justify-self: start; margin: -3px 0 -6px; padding: 0 9px; border: 0; border-radius: 9px; color: var(--accent-strong); background: transparent; cursor: pointer; font-size: 11px; font-weight: 650; }
 .step-insert:hover { background: var(--accent-soft); }
 .step-insert:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.source-editor { display: grid; gap: 12px; margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--separator); }
+.source-attachment-summary { min-height: 68px; display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; overflow: hidden; padding: 9px 12px; border: 1px solid var(--separator); border-radius: 12px; background: var(--surface-muted); }
+.source-attachment-summary > img { width: 48px; height: 48px; border-radius: 9px; object-fit: cover; }
+.source-attachment-summary strong, .source-attachment-summary small { display: block; }
+.source-attachment-summary strong { font-size: 12px; }
+.source-attachment-summary small { margin-top: 3px; overflow: hidden; color: var(--text-secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.source-attachment-actions { display: grid; gap: 10px; }
+.source-photo-button { width: fit-content; cursor: pointer; }
+.source-photo-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.source-photo-button:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.source-url-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.source-url-control .secondary-button { min-height: 43px; }
+.source-attachment-actions > .text-button { width: fit-content; }
 .ai-notice { margin: 15px 0 0; }
 .ai-notice > span { color: var(--accent); font-size: 20px; }
 .dialog-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 9px; margin-top: 24px; padding: 16px 26px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--separator); background: color-mix(in srgb, var(--surface), transparent 4%); backdrop-filter: blur(16px); }
@@ -445,6 +466,8 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
   .field.full { grid-column: auto; }
   .ingredient-row { grid-template-columns: 64px minmax(0, 1fr) 88px 36px; gap: 6px; }
   .ingredient-row input, .ingredient-row select { padding-left: 8px; padding-right: 8px; }
+  .source-url-control { grid-template-columns: 1fr; }
+  .source-url-control .secondary-button { width: 100%; }
   .quick-add { margin-top: 16px; }
 }
 

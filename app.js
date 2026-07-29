@@ -154,12 +154,14 @@ function normalizeRecipeSource(value) {
   if (value.type !== "image") return null;
   const url = safeHttpsUrl(value.url);
   const dataUrl = /^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/=]+$/i.test(value.dataUrl || "") ? value.dataUrl : "";
-  if (!url && !dataUrl) return null;
+  const localId = /^recipe-source-[a-z0-9_-]+$/i.test(value.localId || "") ? value.localId : "";
+  if (!url && !dataUrl && !localId) return null;
   const storagePath = /^recipeSources\/[^/]+\/[^/]+\.(?:jpe?g|png|webp)$/i.test(value.storagePath || "") ? value.storagePath : "";
   return {
     type: "image",
     ...(url ? { url } : {}),
     ...(dataUrl ? { dataUrl } : {}),
+    ...(localId ? { localId } : {}),
     ...(storagePath ? { storagePath } : {}),
     name: String(value.name || "取り込み元画像").trim().slice(0, 120) || "取り込み元画像"
   };
@@ -209,6 +211,12 @@ let calendarDate = new Date(today.getFullYear(), today.getMonth(), 1);
 let selectedMealDate = iso(today);
 let pendingImage = "";
 let pendingSource = null;
+let pendingSourceModified = false;
+let pendingImportQueue = [];
+let pendingImportTotal = 0;
+let pendingImportSaved = 0;
+let pendingChoiceSuggestions = [];
+let pendingChoiceUrl = "";
 let lastPhotoFile = null;
 let ocrInProgress = false;
 let urlImportInProgress = false;
@@ -240,7 +248,7 @@ function renderAllData() {
 function applyCloudState(remoteState, context = {}) {
   const nextState = normalizeState(remoteState);
   const localImageSources = new Map(state.recipes
-    .filter((recipe) => recipe.source?.type === "image" && recipe.source.dataUrl)
+    .filter((recipe) => recipe.source?.type === "image" && (recipe.source.dataUrl || recipe.source.localId))
     .map((recipe) => [recipe.id, recipe.source]));
   nextState.recipes = nextState.recipes.map((recipe) => (
     !recipe.source && localImageSources.has(recipe.id)
@@ -477,6 +485,13 @@ function recipeSourceImage(source) {
   return safeHttpsUrl(source.url) || (/^data:image\//i.test(source.dataUrl || "") ? source.dataUrl : "");
 }
 
+async function loadRecipeSourceImage(source) {
+  const immediate = recipeSourceImage(source);
+  if (immediate) return immediate;
+  try { return await window.MealnoteImages?.getDataUrl?.(source) || ""; }
+  catch { return ""; }
+}
+
 function renderRecipeSource(recipe) {
   const source = normalizeRecipeSource(recipe.source);
   if (!source) return "";
@@ -486,14 +501,15 @@ function renderRecipeSource(recipe) {
     return `<section class="detail-section recipe-source-section"><h3>取り込み元</h3><a class="source-link-card" href="${escapeAttr(source.url)}" target="_blank" rel="noopener noreferrer"><span class="source-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg></span><span><strong>元のWebサイトを開く</strong><small>${escapeHTML(host)}</small></span><svg class="source-card-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 5h10v10M19 5 8 16M15 19H5V9"/></svg></a></section>`;
   }
   const image = recipeSourceImage(source);
-  if (!image) return "";
-  return `<section class="detail-section recipe-source-section"><h3>取り込み元</h3><button class="source-image-card" type="button" data-view-source-image="${escapeAttr(recipe.id)}"><img src="${escapeAttr(image)}" alt="" loading="lazy"><span><strong>解析した画像を表示</strong><small>タップして拡大</small></span><svg class="source-card-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button></section>`;
+  if (!image && !source.localId) return "";
+  return `<section class="detail-section recipe-source-section"><h3>取り込み元</h3><button class="source-image-card" type="button" data-view-source-image="${escapeAttr(recipe.id)}">${image ? `<img src="${escapeAttr(image)}" alt="" loading="lazy">` : `<span class="source-card-icon source-image-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 11l2.5 2.5L14 10l4 5"/></svg></span>`}<span><strong>解析した画像を表示</strong><small>タップして拡大</small></span><svg class="source-card-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button></section>`;
 }
 
-function openSourceImage(recipeId) {
+async function openSourceImage(recipeId) {
   const recipe = state.recipes.find((item) => item.id === recipeId);
-  const image = recipeSourceImage(recipe?.source);
-  if (!recipe || !image) return;
+  if (!recipe) return;
+  const image = await loadRecipeSourceImage(recipe.source);
+  if (!image) { toast("この端末に元画像が見つかりませんでした"); return; }
   $("sourceImagePreview").src = image;
   $("sourceImagePreview").alt = `${recipe.name}の取り込み元画像`;
   $("sourceImageDialog").showModal();
@@ -580,6 +596,7 @@ function deleteRecipe(recipeId) {
   if (!recipe) return;
   if (!confirm(`「${recipe.name}」を削除しますか？\n献立に追加済みの予定からも削除されます。`)) return;
   window.MealnoteCloud?.deleteRecipeImage?.(recipe.source).catch(() => {});
+  window.MealnoteImages?.deleteSource?.(recipe.source).catch(() => {});
   state.recipes = state.recipes.filter((item) => item.id !== recipeId);
   Object.keys(state.schedule).forEach((date) => {
     if (state.schedule[date] === recipeId) delete state.schedule[date];
@@ -715,16 +732,27 @@ function resetRecipeForm() {
   $("ocrError").hidden = true;
   $("urlImportStatus").hidden = true;
   $("urlImportError").hidden = true;
+  $("recipeChoicePanel").hidden = true;
+  $("recipeChoiceList").innerHTML = "";
   $("aiNotice").hidden = true;
   pendingImage = "";
   pendingSource = null;
+  pendingSourceModified = false;
+  pendingImportQueue = [];
+  pendingImportTotal = 0;
+  pendingImportSaved = 0;
+  pendingChoiceSuggestions = [];
+  pendingChoiceUrl = "";
   lastPhotoFile = null;
   ocrInProgress = false;
   urlImportInProgress = false;
   lastUrlText = "";
   lastUrlPage = "";
   $("photoInput").disabled = false;
+  $("sourcePhotoInput").value = "";
+  $("sourceUrlInput").value = "";
   $("importRecipeUrl").disabled = false;
+  renderSourceAttachment();
   switchFormTab("photo");
   validateRecipeForm();
 }
@@ -742,6 +770,9 @@ function openRecipeEditor(recipeId) {
   $("recipeServings").value = recipe.servings;
   $("recipeDishType").value = recipe.dishType;
   $("recipeTools").value = recipe.tools.join("、");
+  pendingSource = normalizeRecipeSource(recipe.source);
+  pendingSourceModified = false;
+  renderSourceAttachment();
   $("ingredientRows").innerHTML = "";
   recipe.ingredients.forEach((ingredient) => addIngredientRow(ingredient.name, ingredient.amount, null, ingredient.group));
   if (!recipe.ingredients.length) addIngredientRow();
@@ -765,7 +796,8 @@ function switchFormTab(tab) {
   $("photoFormPanel").hidden = tab !== "photo";
   $("urlFormPanel").hidden = tab !== "url";
   $("manualFormPanel").hidden = tab !== "manual";
-  $("gemmaBanner").hidden = tab === "manual";
+  $("recipeChoicePanel").hidden = tab !== "choice";
+  $("gemmaBanner").hidden = tab === "manual" || tab === "choice";
   validateRecipeForm();
 }
 
@@ -782,8 +814,32 @@ function knownIngredientNames() {
   ])];
 }
 
+function renderSourceAttachment() {
+  const source = normalizeRecipeSource(pendingSource);
+  const summary = $("sourceAttachmentSummary");
+  const remove = $("removeRecipeSource");
+  remove.hidden = !source;
+  if (!source) {
+    $("sourceUrlInput").value = "";
+    summary.innerHTML = `<span class="source-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 11l2.5 2.5L14 10l4 5"/></svg></span><span><strong>取り込み元はありません</strong><small>写真またはURLを追加できます</small></span>`;
+    return;
+  }
+  if (source.type === "url") {
+    let host = "Webサイト";
+    try { host = new URL(source.url).hostname.replace(/^www\./, ""); } catch {}
+    $("sourceUrlInput").value = source.url;
+    summary.innerHTML = `<span class="source-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg></span><span><strong>Webサイトを設定済み</strong><small>${escapeHTML(host)}</small></span>`;
+    return;
+  }
+  const image = recipeSourceImage(source);
+  $("sourceUrlInput").value = "";
+  summary.innerHTML = `${image ? `<img src="${escapeAttr(image)}" alt="" />` : ""}<span><strong>写真を設定済み</strong><small>${escapeHTML(source.name || "取り込み元画像")}</small></span>`;
+}
+
 function applyRecipeSuggestion(suggestion, sourceLabel, source = null) {
   pendingSource = normalizeRecipeSource(source);
+  pendingSourceModified = Boolean(source);
+  renderSourceAttachment();
   $("recipeName").value = suggestion.name;
   $("recipeTime").value = suggestion.time;
   $("recipeServings").value = suggestion.servings;
@@ -808,6 +864,22 @@ function applyRecipeSuggestion(suggestion, sourceLabel, source = null) {
   switchFormTab("manual");
 }
 
+function showRecipeChoices(suggestions, pageUrl) {
+  pendingChoiceSuggestions = suggestions;
+  pendingChoiceUrl = pageUrl;
+  $("recipeChoiceList").innerHTML = suggestions.map((suggestion, index) => `<label class="recipe-choice-item"><input type="checkbox" value="${index}" checked><span><strong>${escapeHTML(suggestion.name)}</strong><small>${suggestion.ingredients.length}材料・${suggestion.steps.length}工程・${suggestion.servings}人分</small></span></label>`).join("");
+  switchFormTab("choice");
+  toast(`${suggestions.length}件のレシピが見つかりました`);
+}
+
+function loadNextImportedRecipe() {
+  const next = pendingImportQueue.shift();
+  if (!next) return false;
+  applyRecipeSuggestion(next, `Gemma 4 Webページ（${pendingImportSaved + 1}/${pendingImportTotal}）`, { type: "url", url: pendingChoiceUrl });
+  $("saveRecipe").textContent = pendingImportQueue.length ? `保存して次へ（残り${pendingImportQueue.length}件）` : "レシピを保存";
+  return true;
+}
+
 function validateRecipeForm() {
   const manualVisible = !$("manualFormPanel").hidden;
   const valid = manualVisible && $("recipeName").value.trim() && [...document.querySelectorAll(".ingredient-name")].some((input) => input.value.trim());
@@ -826,12 +898,50 @@ async function compressImage(file) {
   return canvas.toDataURL("image/jpeg", .8);
 }
 
+async function attachSourcePhoto(file) {
+  if (!file || !file.type.startsWith("image/")) { toast("画像ファイルを選択してください"); return; }
+  if (file.size > 10 * 1024 * 1024) { toast("10MB以下の画像を選択してください"); return; }
+  try {
+    const dataUrl = await compressImage(file);
+    pendingSource = normalizeRecipeSource({ type: "image", dataUrl, name: file.name });
+    pendingSourceModified = true;
+    renderSourceAttachment();
+    toast("取り込み元の写真を設定しました");
+  } catch {
+    toast("写真を読み込めませんでした。別の画像をお試しください");
+  }
+}
+
+function attachSourceUrl() {
+  try {
+    const url = normalizeRecipeUrl($("sourceUrlInput").value);
+    pendingSource = { type: "url", url };
+    pendingSourceModified = true;
+    renderSourceAttachment();
+    toast("取り込み元のURLを設定しました");
+  } catch (error) {
+    $("sourceUrlInput").focus();
+    toast(error.message);
+  }
+}
+
+function confirmRecipeChoices() {
+  const selectedIndexes = [...$("recipeChoiceList").querySelectorAll("input:checked")].map((input) => Number(input.value));
+  const selected = selectedIndexes.map((index) => pendingChoiceSuggestions[index]).filter(Boolean);
+  if (!selected.length) { toast("取り込むレシピを1件以上選択してください"); return; }
+  pendingImportQueue = [...selected];
+  pendingImportTotal = selected.length;
+  pendingImportSaved = 0;
+  loadNextImportedRecipe();
+}
+
 async function analyzePhoto(file, mode = "gemma") {
   if (!file || !file.type.startsWith("image/")) { toast("画像ファイルを選択してください"); return; }
   if (file.size > 10 * 1024 * 1024) { toast("10MB以下の画像を選択してください"); return; }
   lastPhotoFile = file;
   if (ocrInProgress) return;
   pendingSource = null;
+  pendingSourceModified = false;
   ocrInProgress = true;
   $("photoInput").disabled = true;
   try {
@@ -896,6 +1006,7 @@ async function importRecipeFromUrl(mode = "gemma") {
   try { pageUrl = normalizeRecipeUrl($("recipeUrl").value); }
   catch (error) { $("recipeUrl").focus(); toast(error.message); return; }
   pendingSource = null;
+  pendingSourceModified = false;
   urlImportInProgress = true;
   $("importRecipeUrl").disabled = true;
   $("urlImportStatus").hidden = false;
@@ -906,9 +1017,9 @@ async function importRecipeFromUrl(mode = "gemma") {
   try {
     $("urlImportStatusTitle").textContent = mode === "gemma" ? "Gemma 4がレシピを整理しています…" : "従来方式でレシピを整理しています…";
     $("urlImportStatusDetail").textContent = "材料リストと番号付きの作り方を作成しています";
-    let suggestion;
+    let suggestions;
     if (mode === "gemma") {
-      suggestion = await GemmaRecipe.analyzeUrl(pageUrl, knownIngredientNames());
+      suggestions = await GemmaRecipe.analyzeUrl(pageUrl, knownIngredientNames());
     } else {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 35000);
@@ -922,12 +1033,16 @@ async function importRecipeFromUrl(mode = "gemma") {
           lastUrlPage = pageUrl;
         }
         if (text.length < 80) throw new Error("ページの内容が空でした");
-        suggestion = RecipeOCR.parseWebPage(text, pageUrl, knownIngredientNames());
+        suggestions = [RecipeOCR.parseWebPage(text, pageUrl, knownIngredientNames())];
       } finally { clearTimeout(timeout); }
     }
+    if (!Array.isArray(suggestions) || !suggestions.length) throw new Error("レシピを抽出できませんでした");
     $("urlImportStatus").hidden = true;
-    applyRecipeSuggestion(suggestion, mode === "gemma" ? "Gemma 4 Webページ" : "Webページ（従来方式）", { type: "url", url: pageUrl });
-    toast(`${suggestion.ingredients.length}件の材料を取り込みました`);
+    if (suggestions.length > 1) showRecipeChoices(suggestions, pageUrl);
+    else {
+      applyRecipeSuggestion(suggestions[0], mode === "gemma" ? "Gemma 4 Webページ" : "Webページ（従来方式）", { type: "url", url: pageUrl });
+      toast(`${suggestions[0].ingredients.length}件の材料を取り込みました`);
+    }
   } catch (error) {
     $("urlImportStatus").hidden = true;
     const message = error?.name === "AbortError" ? "ページ取得がタイムアウトしました" : (error?.message || "ページを読み取れませんでした");
@@ -946,17 +1061,19 @@ async function importRecipeFromUrl(mode = "gemma") {
 }
 
 async function resolveRecipeSource(recipeId, existingSource = null) {
-  if (!pendingSource) return normalizeRecipeSource(existingSource);
+  if (!pendingSourceModified) return normalizeRecipeSource(existingSource);
+  if (!pendingSource) return null;
   if (pendingSource.type === "url") return pendingSource;
   const dataUrl = recipeSourceImage(pendingSource);
   if (!dataUrl) return null;
   try {
     const uploaded = await window.MealnoteCloud?.uploadRecipeImage?.(recipeId, dataUrl, pendingSource.name);
-    return normalizeRecipeSource(uploaded || pendingSource);
+    if (uploaded) return normalizeRecipeSource(uploaded);
   } catch {
-    toast("画像は端末に保存しました。クラウド保存は自動で再試行します");
-    return pendingSource;
+    toast("画像はこの端末に保存しました。クラウド保存は自動で再試行します");
   }
+  try { return normalizeRecipeSource(await window.MealnoteImages?.save?.(recipeId, dataUrl, pendingSource.name)); }
+  catch { toast("画像の保存に失敗しました"); return null; }
 }
 
 async function submitRecipe(event) {
@@ -968,7 +1085,7 @@ async function submitRecipe(event) {
   })).filter((item) => item.name).map((item) => ({ ...item, category: categorize(item.name) }));
   if (!$("recipeName").value.trim() || ingredients.length === 0) { toast("料理名と材料を入力してください"); return; }
   const existingRecipe = editingRecipeId ? state.recipes.find((item) => item.id === editingRecipeId) : null;
-  const id = existingRecipe?.id || `recipe-${Date.now()}`;
+  const id = existingRecipe?.id || `recipe-${crypto.randomUUID()}`;
   const saveButton = $("saveRecipe");
   const saveLabel = saveButton.textContent;
   saveButton.disabled = true;
@@ -991,13 +1108,31 @@ async function submitRecipe(event) {
   if (!recipe.steps.length) recipe.steps = ["材料を準備する。", "火が通るまで調理し、味を整える。"]; 
   if (existingRecipe) state.recipes = state.recipes.map((item) => item.id === id ? recipe : item);
   else state.recipes.unshift(recipe);
+  if (existingRecipe?.source?.storagePath && existingRecipe.source.storagePath !== source?.storagePath) {
+    window.MealnoteCloud?.deleteRecipeImage?.(existingRecipe.source).catch(() => {});
+  }
+  if (existingRecipe?.source?.localId && existingRecipe.source.localId !== source?.localId) {
+    window.MealnoteImages?.deleteSource?.(existingRecipe.source).catch(() => {});
+  }
   ingredients.forEach((item) => { if (!state.customIngredients.includes(item.name)) state.customIngredients.push(item.name); });
   saveState();
-  $("recipeFormDialog").close();
   renderIngredientSuggestions();
   renderRecipes();
-  toast(existingRecipe ? "レシピを更新しました" : "レシピを保存しました");
+  pendingImportSaved += pendingImportTotal ? 1 : 0;
+  if (!existingRecipe && pendingImportQueue.length) {
+    toast(`${pendingImportSaved}件を保存しました。次のレシピを確認してください`);
+    pendingSource = null;
+    pendingSourceModified = false;
+    loadNextImportedRecipe();
+    saveButton.disabled = false;
+    return;
+  }
+  $("recipeFormDialog").close();
+  toast(existingRecipe ? "レシピを更新しました" : (pendingImportTotal > 1 ? `${pendingImportSaved}件のレシピを保存しました` : "レシピを保存しました"));
   editingRecipeId = "";
+  pendingImportQueue = [];
+  pendingImportTotal = 0;
+  pendingImportSaved = 0;
   saveButton.textContent = saveLabel;
   setTimeout(() => openRecipeDetail(id), 180);
 }
@@ -1091,6 +1226,16 @@ $("mealDateInput").addEventListener("change", (event) => {
   if (event.target.value) selectedMealDate = event.target.value;
 });
 $("photoInput").addEventListener("change", (event) => analyzePhoto(event.target.files[0]));
+$("sourcePhotoInput").addEventListener("change", (event) => attachSourcePhoto(event.target.files[0]));
+$("attachSourceUrl").addEventListener("click", attachSourceUrl);
+$("sourceUrlInput").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); attachSourceUrl(); } });
+$("removeRecipeSource").addEventListener("click", () => {
+  pendingSource = null;
+  pendingSourceModified = true;
+  $("sourcePhotoInput").value = "";
+  renderSourceAttachment();
+  toast("取り込み元を削除します。変更を保存すると反映されます");
+});
 $("retryOCR").addEventListener("click", () => { if (lastPhotoFile) analyzePhoto(lastPhotoFile); else $("photoInput").click(); });
 $("fallbackOCR").addEventListener("click", () => { if (lastPhotoFile) analyzePhoto(lastPhotoFile, "local"); else $("photoInput").click(); });
 $("manualFromOCRError").addEventListener("click", () => switchFormTab("manual"));
@@ -1099,6 +1244,7 @@ $("retryUrlImport").addEventListener("click", () => importRecipeFromUrl());
 $("fallbackUrlImport").addEventListener("click", () => importRecipeFromUrl("local"));
 $("manualFromUrlError").addEventListener("click", () => switchFormTab("manual"));
 $("recipeUrl").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); importRecipeFromUrl(); } });
+$("confirmRecipeChoices").addEventListener("click", confirmRecipeChoices);
 $("dropZone").addEventListener("dragover", (event) => { event.preventDefault(); $("dropZone").classList.add("is-dragging"); });
 $("dropZone").addEventListener("dragleave", () => $("dropZone").classList.remove("is-dragging"));
 $("dropZone").addEventListener("drop", (event) => { event.preventDefault(); $("dropZone").classList.remove("is-dragging"); analyzePhoto(event.dataTransfer.files[0]); });
@@ -1190,4 +1336,15 @@ renderIngredientSuggestions();
 renderRecipes();
 renderCalendar();
 renderShopping();
-initializeCloudSync();
+
+(async function initializePersistence() {
+  try {
+    const migrated = await window.MealnoteImages?.migrateState?.(state);
+    if (migrated?.changed) {
+      state = normalizeState(migrated.state);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAllData();
+    }
+  } catch {}
+  initializeCloudSync();
+})();
