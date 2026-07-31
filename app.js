@@ -253,9 +253,22 @@ const escapeAttr = escapeHTML;
 const dateFormatter = new Intl.DateTimeFormat("ja-JP", { month: "long", day: "numeric", weekday: "short" });
 
 function saveState() {
+  let legacyStorageFull = false;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-  catch { toast("端末への保存に失敗しました"); }
+  catch {
+    legacyStorageFull = true;
+    toast("端末への保存容量が不足したため、大容量保存へ切り替えました");
+  }
+  const durableSave = window.MealnoteStateStore?.save?.(state) || Promise.resolve();
+  durableSave
+    .then(() => {
+      if (!legacyStorageFull) return;
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      if (!applyingCloudState) window.MealnoteCloud?.queueSave(state);
+    })
+    .catch(() => toast("端末への保存に失敗しました"));
   if (!applyingCloudState) window.MealnoteCloud?.queueSave(state);
+  return durableSave;
 }
 
 function renderAllData() {
@@ -281,6 +294,7 @@ function applyCloudState(remoteState, context = {}) {
   state = nextState;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch { toast("端末への保存に失敗しました"); }
+  window.MealnoteStateStore?.save?.(state).catch(() => {});
   applyingCloudState = false;
   renderAllData();
   if (context.initial) toast("クラウドのデータを読み込みました");
@@ -1169,12 +1183,15 @@ async function submitRecipe(event) {
     window.MealnoteImages?.deleteSource?.(existingRecipe.source).catch(() => {});
   }
   ingredients.forEach((item) => { if (!state.customIngredients.includes(item.name)) state.customIngredients.push(item.name); });
-  saveState();
+  await saveState();
   renderIngredientSuggestions();
   renderRecipes();
+  let cloudSaveFailed = false;
+  try { await window.MealnoteCloud?.flush?.(); }
+  catch { cloudSaveFailed = true; }
   pendingImportSaved += pendingImportTotal ? 1 : 0;
   if (!existingRecipe && pendingImportQueue.length) {
-    toast(`${pendingImportSaved}件を保存しました。次のレシピを確認してください`);
+    toast(cloudSaveFailed ? "端末に保存しました。クラウド保存は自動で再試行します" : `${pendingImportSaved}件を保存しました。次のレシピを確認してください`);
     pendingSource = null;
     pendingSourceModified = false;
     loadNextImportedRecipe();
@@ -1182,7 +1199,9 @@ async function submitRecipe(event) {
     return;
   }
   $("recipeFormDialog").close();
-  toast(existingRecipe ? "レシピを更新しました" : (pendingImportTotal > 1 ? `${pendingImportSaved}件のレシピを保存しました` : "レシピを保存しました"));
+  toast(cloudSaveFailed
+    ? "端末に保存しました。クラウド保存は自動で再試行します"
+    : (existingRecipe ? "レシピを更新しました" : (pendingImportTotal > 1 ? `${pendingImportSaved}件のレシピを保存しました` : "レシピを保存しました")));
   editingRecipeId = "";
   pendingImportQueue = [];
   pendingImportTotal = 0;
@@ -1396,10 +1415,21 @@ renderShopping();
 
 (async function initializePersistence() {
   try {
+    const durableState = await window.MealnoteStateStore?.load?.();
+    if (durableState) {
+      const nextState = normalizeState(durableState);
+      if (JSON.stringify(nextState) !== JSON.stringify(state)) {
+        state = nextState;
+        renderAllData();
+      }
+    } else {
+      await window.MealnoteStateStore?.save?.(state);
+    }
     const migrated = await window.MealnoteImages?.migrateState?.(state);
     if (migrated?.changed) {
       state = normalizeState(migrated.state);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+      await window.MealnoteStateStore?.save?.(state);
       renderAllData();
     }
   } catch {}
