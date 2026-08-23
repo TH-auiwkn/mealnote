@@ -6,14 +6,14 @@
     <meta name="theme-color" content="#f6f6f2" />
     <meta name="description" content="レシピ、献立、買い物をひとつにつなぐ献立管理アプリ Mealnote" />
     <title>Mealnote — 献立が、すっと決まる。</title>
-    <link rel="stylesheet" href="styles.css?v=22" />
-    <script src="config.js?v=22"></script>
-    <script src="image-store.js?v=22" defer></script>
-    <script src="state-store.js?v=22" defer></script>
-    <script src="cloud-sync.js?v=22" defer></script>
-    <script src="recipe-ocr.js?v=22" defer></script>
-    <script src="gemma-recipe.js?v=22" defer></script>
-    <script src="app.js?v=22" defer></script>
+    <link rel="stylesheet" href="styles.css?v=23" />
+    <script src="config.js?v=23"></script>
+    <script src="image-store.js?v=23" defer></script>
+    <script src="state-store.js?v=23" defer></script>
+    <script src="cloud-sync.js?v=23" defer></script>
+    <script src="recipe-ocr.js?v=23" defer></script>
+    <script src="gemma-recipe.js?v=23" defer></script>
+    <script src="app.js?v=23" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">メインコンテンツへ</a>
@@ -83,7 +83,7 @@
               </div>
             </div>
 
-            <div class="result-row"><p id="resultSummary" aria-live="polite"></p><label class="sort-control">並び順<select id="sortSelect"><option value="recent">最近追加した順</option><option value="cooked">最後に作った順</option><option value="name">名前順</option></select></label></div>
+            <div class="result-row"><p id="resultSummary" aria-live="polite"></p><label class="sort-control">並び順<select id="sortSelect"><option value="recent">最近追加した順</option><option value="cooked">最後に作った順</option><option value="stale">最近作っていない順</option><option value="name">名前順</option></select></label></div>
             <div class="recipe-grid" id="recipeGrid"></div>
             <div class="empty-state" id="recipeEmpty" hidden><span aria-hidden="true">⌕</span><h2>レシピが見つかりません</h2><p>検索条件を変えてみてください。</p><button class="secondary-button" type="button" id="resetSearch">条件をリセット</button></div>
           </section>
@@ -95,7 +95,13 @@
             </div>
             <div class="calendar-toolbar">
               <div class="month-nav"><button class="icon-button" id="prevMonth" type="button" aria-label="前の月"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><h2 id="monthLabel"></h2><button class="icon-button" id="nextMonth" type="button" aria-label="次の月"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button></div>
-              <button class="secondary-button compact" id="todayButton" type="button">今日</button>
+              <div class="calendar-toolbar-actions">
+                <div class="calendar-view-switch" role="group" aria-label="カレンダーの表示期間">
+                  <button type="button" data-calendar-view="month" aria-pressed="true">月</button>
+                  <button type="button" data-calendar-view="week" aria-pressed="false">週</button>
+                </div>
+                <button class="secondary-button compact" id="todayButton" type="button">今日</button>
+              </div>
             </div>
             <div class="calendar-card">
               <div class="weekdays" aria-hidden="true"><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日</span></div>

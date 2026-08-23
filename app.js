@@ -229,6 +229,7 @@ let activeTags = new Set();
 let activeTools = new Set();
 let activeDishTypes = new Set();
 let calendarDate = new Date(today.getFullYear(), today.getMonth(), 1);
+let calendarView = "month";
 let selectedMealDate = iso(today);
 let pendingImage = "";
 let pendingSource = null;
@@ -464,6 +465,13 @@ function matchesRecipeQuery(recipe, query) {
   return searchableValues.some((value) => String(value || "").normalize("NFKC").toLocaleLowerCase("ja").includes(normalizedQuery));
 }
 
+function compareRecipesByNeglect(a, b) {
+  if (!a.lastCooked && b.lastCooked) return -1;
+  if (a.lastCooked && !b.lastCooked) return 1;
+  return (a.lastCooked || a.createdAt || "").localeCompare(b.lastCooked || b.createdAt || "")
+    || a.name.localeCompare(b.name, "ja");
+}
+
 function filteredRecipes() {
   const query = $("searchInput").value;
   const sort = $("sortSelect").value;
@@ -478,6 +486,7 @@ function filteredRecipes() {
   recipes.sort((a, b) => {
     if (sort === "name") return a.name.localeCompare(b.name, "ja");
     if (sort === "cooked") return (b.lastCooked || "").localeCompare(a.lastCooked || "");
+    if (sort === "stale") return compareRecipesByNeglect(a, b);
     return (b.createdAt || "").localeCompare(a.createdAt || "");
   });
   return recipes;
@@ -587,14 +596,55 @@ function calendarDays(date) {
   return Array.from({ length: 42 }, (_, index) => addDays(start, index));
 }
 
+function calendarWeekDays(date) {
+  const offset = (date.getDay() + 6) % 7;
+  const start = addDays(date, -offset);
+  return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+}
+
+function calendarPeriodLabel(days) {
+  if (calendarView === "month") return `${calendarDate.getFullYear()}年${calendarDate.getMonth() + 1}月`;
+  const first = days[0];
+  const last = days.at(-1);
+  if (first.getFullYear() !== last.getFullYear()) {
+    return `${first.getFullYear()}年${first.getMonth() + 1}月${first.getDate()}日〜${last.getFullYear()}年${last.getMonth() + 1}月${last.getDate()}日`;
+  }
+  if (first.getMonth() !== last.getMonth()) {
+    return `${first.getFullYear()}年${first.getMonth() + 1}月${first.getDate()}日〜${last.getMonth() + 1}月${last.getDate()}日`;
+  }
+  return `${first.getFullYear()}年${first.getMonth() + 1}月${first.getDate()}日〜${last.getDate()}日`;
+}
+
+function setCalendarView(view) {
+  if (!['month', 'week'].includes(view) || calendarView === view) return;
+  if (view === "week" && calendarDate.getFullYear() === today.getFullYear() && calendarDate.getMonth() === today.getMonth()) {
+    calendarDate = new Date(today);
+  }
+  calendarView = view;
+  renderCalendar();
+}
+
+function moveCalendar(direction) {
+  if (calendarView === "week") calendarDate = addDays(calendarDate, direction * 7);
+  else calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + direction, 1);
+  renderCalendar();
+}
+
 function renderCalendar() {
-  $("monthLabel").textContent = `${calendarDate.getFullYear()}年 ${calendarDate.getMonth() + 1}月`;
-  $("calendarGrid").innerHTML = calendarDays(calendarDate).map((date) => {
+  const days = calendarView === "week" ? calendarWeekDays(calendarDate) : calendarDays(calendarDate);
+  $("monthLabel").textContent = calendarPeriodLabel(days);
+  $("prevMonth").setAttribute("aria-label", calendarView === "week" ? "前の週" : "前の月");
+  $("nextMonth").setAttribute("aria-label", calendarView === "week" ? "次の週" : "次の月");
+  document.querySelectorAll("[data-calendar-view]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.calendarView === calendarView));
+  });
+  $("calendarGrid").classList.toggle("is-week-view", calendarView === "week");
+  $("calendarGrid").innerHTML = days.map((date) => {
     const key = iso(date);
     const recipes = (state.schedule[key] || []).map((recipeId) => state.recipes.find((item) => item.id === recipeId)).filter(Boolean);
-    const visibleRecipes = recipes.slice(0, 2);
+    const visibleRecipes = recipes.slice(0, calendarView === "week" ? 5 : 2);
     const remainingCount = recipes.length - visibleRecipes.length;
-    const outside = date.getMonth() !== calendarDate.getMonth();
+    const outside = calendarView === "month" && date.getMonth() !== calendarDate.getMonth();
     const isToday = key === iso(today);
     return `<div class="calendar-day${outside ? " outside" : ""}${isToday ? " today" : ""}" role="gridcell">
       <button class="day-trigger" type="button" data-calendar-date="${key}" aria-label="${dateFormatter.format(date)}${recipes.length ? `、献立${recipes.length}品を表示` : "、献立を追加"}">
@@ -688,7 +738,7 @@ function addMeal(recipeId) {
     const recipe = state.recipes.find((item) => item.id === recipeId);
     if (recipe) recipe.lastCooked = selectedMealDate;
   }
-  calendarDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+  calendarDate = calendarView === "week" ? selectedDate : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
   saveState();
   renderCalendar();
   renderRecipes();
@@ -1290,9 +1340,10 @@ $("clearFilters").addEventListener("click", () => { activeTags.clear(); activeTo
 $("resetSearch").addEventListener("click", () => { $("searchInput").value = ""; activeTags.clear(); activeTools.clear(); activeDishTypes.clear(); renderRecipes(); });
 $("searchInput").addEventListener("input", renderRecipes);
 $("sortSelect").addEventListener("change", renderRecipes);
-$("prevMonth").addEventListener("click", () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderCalendar(); });
-$("nextMonth").addEventListener("click", () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalendar(); });
-$("todayButton").addEventListener("click", () => { calendarDate = new Date(today.getFullYear(), today.getMonth(), 1); renderCalendar(); });
+$("prevMonth").addEventListener("click", () => moveCalendar(-1));
+$("nextMonth").addEventListener("click", () => moveCalendar(1));
+$("todayButton").addEventListener("click", () => { calendarDate = new Date(today); renderCalendar(); });
+document.querySelectorAll("[data-calendar-view]").forEach((button) => button.addEventListener("click", () => setCalendarView(button.dataset.calendarView)));
 $("addMealHeader").addEventListener("click", () => openMealPicker(iso(today)));
 $("mealSearch").addEventListener("input", () => renderMealPicker());
 $("mealDateInput").addEventListener("change", (event) => {

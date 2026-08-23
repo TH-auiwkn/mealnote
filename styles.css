@@ -131,10 +131,15 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
 
 .calendar-heading { margin-bottom: 26px; }
 .calendar-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.calendar-toolbar-actions { display: flex; align-items: center; gap: 10px; }
+.calendar-view-switch { display: inline-grid; grid-template-columns: repeat(2, minmax(40px, 1fr)); gap: 3px; padding: 3px; border-radius: 10px; background: var(--surface-muted); }
+.calendar-view-switch button { min-height: 40px; padding: 0 12px; border: 0; border-radius: 7px; color: var(--text-secondary); background: transparent; cursor: pointer; font-size: 12px; font-weight: 680; }
+.calendar-view-switch button[aria-pressed="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 4px rgb(0 0 0 / .09); }
 .month-nav { display: flex; align-items: center; gap: 4px; }
 .month-nav h2 { min-width: 150px; margin: 0 6px; text-align: center; font-size: 19px; }
 .calendar-card { overflow: hidden; border: 1px solid var(--separator); border-radius: var(--radius-md); background: var(--surface); }
 .weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.calendar-grid.is-week-view { grid-template-rows: minmax(280px, auto); }
 .weekdays { min-height: 43px; align-items: center; border-bottom: 1px solid var(--separator); color: var(--text-secondary); font-size: 11px; font-weight: 650; text-align: center; }
 .calendar-day { position: relative; min-width: 0; min-height: 136px; padding: 9px; border-right: 1px solid var(--separator); border-bottom: 1px solid var(--separator); background: var(--surface); text-align: left; }
 .calendar-day:nth-child(7n) { border-right: 0; }
@@ -436,13 +441,18 @@ h1 { margin: 0; font-size: clamp(2.4rem, 4.8vw, 4rem); line-height: 1.05; letter
   #view-calendar .calendar-heading .eyebrow { margin-bottom: 2px; font-size: 9px; }
   #view-calendar .calendar-heading h1 { font-size: 2rem; }
   .calendar-heading .primary-button { display: none; }
-  #view-calendar .calendar-toolbar { min-width: 0; gap: 8px; margin-bottom: 8px; }
+  #view-calendar .calendar-toolbar { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; margin-bottom: 8px; }
   #view-calendar .month-nav { min-width: 0; flex: 1; }
-  #view-calendar .month-nav h2 { min-width: 0; flex: 1; margin: 0; font-size: 16px; white-space: nowrap; }
+  #view-calendar .month-nav h2 { min-width: 0; flex: 1; margin: 0; font-size: 13px; line-height: 1.2; white-space: normal; }
+  #view-calendar .calendar-toolbar-actions { display: contents; }
+  #view-calendar .calendar-view-switch { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(2, 44px); gap: 2px; justify-self: center; padding: 2px; border-radius: 8px; }
+  #view-calendar .calendar-view-switch button { min-height: 44px; padding: 0; border-radius: 6px; font-size: 11px; }
+  #view-calendar #todayButton { grid-column: 2; grid-row: 1; min-height: 44px; padding: 0 10px; }
   #view-calendar .calendar-card { min-height: 0; display: grid; grid-template-rows: 30px minmax(0, 1fr); overflow: hidden; margin-left: -16px; margin-right: -16px; border-radius: 0; border-left: 0; border-right: 0; }
   #view-calendar .weekdays, #view-calendar .calendar-grid { width: 100%; min-width: 0; }
   #view-calendar .weekdays { min-height: 30px; font-size: 10px; }
   #view-calendar .calendar-grid { min-height: 0; grid-template-rows: repeat(6, minmax(0, 1fr)); }
+  #view-calendar .calendar-grid.is-week-view { grid-template-rows: minmax(0, 1fr); }
   #view-calendar .calendar-day { min-height: 0; overflow: hidden; padding: 3px; }
   #view-calendar .day-trigger { min-height: 24px; align-items: flex-start; }
   #view-calendar .day-number { font-size: 10px; }
