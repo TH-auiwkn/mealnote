@@ -2,6 +2,8 @@ const STORAGE_KEY = "mealnote-state-v1";
 const INGREDIENT_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const DISH_TYPES = ["メイン料理", "副菜", "その他"];
 const MAX_MEALS_PER_DAY = 10;
+const MAX_NOTES_PER_DAY = 10;
+const MAX_CALENDAR_NOTE_LENGTH = 80;
 
 const baseRecipes = [
   {
@@ -100,6 +102,7 @@ function initialState() {
   return {
     recipes: baseRecipes,
     schedule: Object.fromEntries(Object.entries(seedSchedule).map(([date, recipeIds]) => [date, [...recipeIds]])),
+    calendarNotes: {},
     shopping: [],
     customIngredients: defaultIngredients
   };
@@ -111,6 +114,23 @@ function normalizeSchedule(value, fallback = {}) {
     const candidates = Array.isArray(entry) ? entry : [entry];
     const recipeIds = [...new Set(candidates.filter((id) => typeof id === "string" && id.trim()).map((id) => id.trim()))].slice(0, MAX_MEALS_PER_DAY);
     return recipeIds.length ? [[date, recipeIds]] : [];
+  }));
+}
+
+function normalizeCalendarNotes(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).flatMap(([date, entries]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+    const candidates = Array.isArray(entries) ? entries : [entries];
+    const notes = candidates.flatMap((entry, index) => {
+      const rawText = typeof entry === "string" ? entry : entry?.text;
+      const text = String(rawText || "").normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, MAX_CALENDAR_NOTE_LENGTH);
+      if (!text) return [];
+      const rawId = typeof entry === "object" ? entry?.id : "";
+      const id = typeof rawId === "string" && rawId.trim() ? rawId.trim().slice(0, 120) : `note-${date}-${index}`;
+      return [{ id, text }];
+    }).slice(0, MAX_NOTES_PER_DAY);
+    return notes.length ? [[date, notes]] : [];
   }));
 }
 
@@ -207,6 +227,7 @@ function normalizeState(saved) {
   return {
     recipes,
     schedule,
+    calendarNotes: normalizeCalendarNotes(saved.calendarNotes),
     shopping: Array.isArray(saved.shopping) ? saved.shopping : [],
     customIngredients: Array.isArray(saved.customIngredients)
       ? [...new Set(saved.customIngredients.filter((item) => typeof item === "string" && item.trim()))]
@@ -642,24 +663,46 @@ function renderCalendar() {
   $("calendarGrid").innerHTML = days.map((date) => {
     const key = iso(date);
     const recipes = (state.schedule[key] || []).map((recipeId) => state.recipes.find((item) => item.id === recipeId)).filter(Boolean);
-    const visibleRecipes = recipes.slice(0, calendarView === "week" ? 5 : 2);
+    const notes = state.calendarNotes[key] || [];
+    const visibleRecipes = recipes.slice(0, calendarView === "week" ? 5 : (notes.length ? 1 : 2));
+    const visibleNotes = notes.slice(0, calendarView === "week" ? 3 : 1);
     const remainingCount = recipes.length - visibleRecipes.length;
+    const remainingNotes = notes.length - visibleNotes.length;
     const outside = calendarView === "month" && date.getMonth() !== calendarDate.getMonth();
     const isToday = key === iso(today);
+    const daySummary = `${recipes.length ? `、献立${recipes.length}品` : ""}${notes.length ? `、メモ${notes.length}件` : ""}`;
     return `<div class="calendar-day${outside ? " outside" : ""}${isToday ? " today" : ""}" role="gridcell">
-      <button class="day-trigger" type="button" data-calendar-date="${key}" aria-label="${dateFormatter.format(date)}${recipes.length ? `、献立${recipes.length}品を表示` : "、献立を追加"}">
+      <button class="day-trigger" type="button" data-calendar-date="${key}" aria-label="${dateFormatter.format(date)}${daySummary || "、献立またはメモを追加"}">
         <span class="day-number">${date.getDate()}</span><span class="day-add" aria-hidden="true">＋</span>
       </button>
-      ${visibleRecipes.map((recipe) => `<div class="meal-chip"><span>${escapeHTML(recipe.name)}</span><button class="meal-remove" type="button" data-remove-meal-date="${key}" data-remove-meal-recipe="${escapeAttr(recipe.id)}" aria-label="${dateFormatter.format(date)}の${escapeAttr(recipe.name)}を削除">×</button></div>`).join("")}
+      ${visibleRecipes.map((recipe) => renderCalendarRecipeItem(date, key, recipe)).join("")}
       ${remainingCount > 0 ? `<button class="meal-more" type="button" data-calendar-date="${key}" aria-label="${dateFormatter.format(date)}の残り${remainingCount}品を表示">ほか${remainingCount}品</button>` : ""}
+      ${visibleNotes.map((note) => `<button class="calendar-note-chip calendar-item-button" type="button" data-calendar-date="${key}" aria-label="${dateFormatter.format(date)}のメモ、${escapeAttr(note.text)}を表示"><span class="calendar-note-mark" aria-hidden="true">※</span><span title="${escapeAttr(note.text)}">${escapeHTML(calendarItemLabel(note.text))}</span></button>`).join("")}
+      ${remainingNotes > 0 ? `<button class="meal-more note-more" type="button" data-calendar-date="${key}" aria-label="${dateFormatter.format(date)}の残りのメモ${remainingNotes}件を表示">メモほか${remainingNotes}件</button>` : ""}
     </div>`;
   }).join("");
+}
+
+function calendarItemLabel(value) {
+  const text = String(value || "");
+  if (calendarView !== "week") return text;
+  const characters = Array.from(text);
+  return characters.length > 10 ? `${characters.slice(0, 10).join("")}…` : text;
+}
+
+function renderCalendarRecipeItem(date, key, recipe) {
+  const label = calendarItemLabel(recipe.name);
+  if (calendarView === "week") {
+    return `<button class="meal-chip calendar-item-button" type="button" data-calendar-date="${key}" aria-label="${dateFormatter.format(date)}の${escapeAttr(recipe.name)}を表示"><span title="${escapeAttr(recipe.name)}">${escapeHTML(label)}</span></button>`;
+  }
+  return `<div class="meal-chip"><span>${escapeHTML(label)}</span><button class="meal-remove" type="button" data-remove-meal-date="${key}" data-remove-meal-recipe="${escapeAttr(recipe.id)}" aria-label="${dateFormatter.format(date)}の${escapeAttr(recipe.name)}を削除">×</button></div>`;
 }
 
 function openMealPicker(date = iso(today), presetRecipe = "") {
   selectedMealDate = date;
   $("mealDateInput").value = date;
   $("mealSearch").value = "";
+  $("calendarNoteInput").value = "";
   renderMealPicker(presetRecipe);
   if ($("recipeDetailDialog").open) $("recipeDetailDialog").close();
   $("mealPickerDialog").showModal();
@@ -697,12 +740,58 @@ function renderMealPicker(preferred = "") {
       <span>${escapeHTML(recipe.name)}</span>
       <button class="meal-picker-remove" type="button" data-remove-meal-date="${escapeAttr(selectedMealDate)}" data-remove-meal-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.name)}をこの日の献立から削除">削除</button>
     </div>`).join("") : `<p class="scheduled-meal-empty">まだ献立はありません。</p>`;
+  const notes = state.calendarNotes[selectedMealDate] || [];
+  $("calendarNoteCount").textContent = `${notes.length} / ${MAX_NOTES_PER_DAY}件`;
+  $("calendarNoteList").innerHTML = notes.length ? notes.map((note) => `
+    <div class="calendar-note-item">
+      <span><i aria-hidden="true">※</i>${escapeHTML(note.text)}</span>
+      <button class="meal-picker-remove" type="button" data-remove-note-date="${escapeAttr(selectedMealDate)}" data-remove-note-id="${escapeAttr(note.id)}" aria-label="${escapeAttr(note.text)}をこの日のメモから削除">削除</button>
+    </div>`).join("") : `<p class="scheduled-meal-empty">メモはありません。</p>`;
+  $("calendarNoteInput").disabled = notes.length >= MAX_NOTES_PER_DAY;
+  $("calendarNoteForm").querySelector("button").disabled = notes.length >= MAX_NOTES_PER_DAY;
   let recipes = state.recipes.filter((recipe) => matchesRecipeQuery(recipe, query));
   if (preferred) recipes = recipes.sort((item) => item.id === preferred ? -1 : 0);
   $("mealPickerList").innerHTML = recipes.length ? recipes.map((recipe) => `
     <button class="picker-item" type="button" data-pick-recipe="${escapeAttr(recipe.id)}"${scheduledIds.includes(recipe.id) || isFull ? " disabled" : ""}>
       <span><strong>${escapeHTML(recipe.name)}</strong><small>${escapeHTML(formatLastCooked(recipe.lastCooked))}</small></span><span class="picker-add" aria-hidden="true">${scheduledIds.includes(recipe.id) ? "追加済み" : (isFull ? "上限" : "＋")}</span>
     </button>`).join("") : `<div class="empty-state small"><h2>見つかりません</h2><p>別の名前や材料で検索してください。</p></div>`;
+}
+
+function addCalendarNote() {
+  const input = $("calendarNoteInput");
+  const text = input.value.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, MAX_CALENDAR_NOTE_LENGTH);
+  if (!text) { toast("メモを入力してください"); input.focus(); return; }
+  const notes = state.calendarNotes[selectedMealDate] || [];
+  if (notes.length >= MAX_NOTES_PER_DAY) { toast("1日に登録できるメモは10件までです"); return; }
+  state.calendarNotes[selectedMealDate] = [...notes, { id: `note-${crypto.randomUUID()}`, text }];
+  const selectedDate = new Date(`${selectedMealDate}T00:00:00`);
+  calendarDate = calendarView === "week" ? selectedDate : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+  input.value = "";
+  saveState();
+  renderCalendar();
+  renderMealPicker();
+  toast("メモを追加しました");
+}
+
+function removeCalendarNote(date, noteId) {
+  const notes = state.calendarNotes[date] || [];
+  const removedIndex = notes.findIndex((note) => note.id === noteId);
+  if (removedIndex < 0) return;
+  const [removed] = notes.splice(removedIndex, 1);
+  if (notes.length) state.calendarNotes[date] = notes;
+  else delete state.calendarNotes[date];
+  saveState();
+  renderCalendar();
+  if ($("mealPickerDialog").open && selectedMealDate === date) renderMealPicker();
+  toast("メモを削除しました", "元に戻す", () => {
+    const restored = [...(state.calendarNotes[date] || [])];
+    if (!restored.some((note) => note.id === noteId) && restored.length < MAX_NOTES_PER_DAY) restored.splice(Math.min(removedIndex, restored.length), 0, removed);
+    state.calendarNotes[date] = restored;
+    saveState();
+    renderCalendar();
+    if ($("mealPickerDialog").open && selectedMealDate === date) renderMealPicker();
+    toast("メモを元に戻しました");
+  });
 }
 
 function deleteRecipe(recipeId) {
@@ -1283,6 +1372,8 @@ document.addEventListener("click", (event) => {
   if (calendarDay) openMealPicker(calendarDay.dataset.calendarDate);
   const removeMealButton = event.target.closest("[data-remove-meal-date]");
   if (removeMealButton) removeMeal(removeMealButton.dataset.removeMealDate, removeMealButton.dataset.removeMealRecipe);
+  const removeNoteButton = event.target.closest("[data-remove-note-date]");
+  if (removeNoteButton) removeCalendarNote(removeNoteButton.dataset.removeNoteDate, removeNoteButton.dataset.removeNoteId);
   const pickButton = event.target.closest("[data-pick-recipe]");
   if (pickButton) addMeal(pickButton.dataset.pickRecipe);
   const shopRecipe = event.target.closest("[data-shop-recipe]");
@@ -1346,9 +1437,11 @@ $("todayButton").addEventListener("click", () => { calendarDate = new Date(today
 document.querySelectorAll("[data-calendar-view]").forEach((button) => button.addEventListener("click", () => setCalendarView(button.dataset.calendarView)));
 $("addMealHeader").addEventListener("click", () => openMealPicker(iso(today)));
 $("mealSearch").addEventListener("input", () => renderMealPicker());
+$("calendarNoteForm").addEventListener("submit", (event) => { event.preventDefault(); addCalendarNote(); });
 $("mealDateInput").addEventListener("change", (event) => {
   if (event.target.value) {
     selectedMealDate = event.target.value;
+    $("calendarNoteInput").value = "";
     renderMealPicker();
   }
 });
