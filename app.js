@@ -705,7 +705,7 @@ function openMealPicker(date = iso(today), presetRecipe = "") {
   $("calendarNoteInput").value = "";
   renderMealPicker(presetRecipe);
   if ($("recipeDetailDialog").open) $("recipeDetailDialog").close();
-  $("mealPickerDialog").showModal();
+  if (!$("mealPickerDialog").open) $("mealPickerDialog").showModal();
 }
 
 function removeMeal(date, recipeId) {
@@ -737,7 +737,10 @@ function renderMealPicker(preferred = "") {
   $("mealPickerCount").textContent = `${scheduledIds.length} / ${MAX_MEALS_PER_DAY}品`;
   $("scheduledMealList").innerHTML = scheduledRecipes.length ? scheduledRecipes.map((recipe) => `
     <div class="scheduled-meal-item">
-      <span>${escapeHTML(recipe.name)}</span>
+      <button class="scheduled-recipe-link" type="button" data-recipe-id="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.name)}のレシピを見る">
+        <span>${escapeHTML(recipe.name)}</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
       <button class="meal-picker-remove" type="button" data-remove-meal-date="${escapeAttr(selectedMealDate)}" data-remove-meal-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.name)}をこの日の献立から削除">削除</button>
     </div>`).join("") : `<p class="scheduled-meal-empty">まだ献立はありません。</p>`;
   const notes = state.calendarNotes[selectedMealDate] || [];
