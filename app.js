@@ -1,4 +1,5 @@
 const STORAGE_KEY = "mealnote-state-v1";
+const CALENDAR_VIEW_KEY = "mealnote-calendar-view-v1";
 const INGREDIENT_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const DISH_TYPES = ["メイン料理", "副菜", "その他"];
 const MAX_MEALS_PER_DAY = 10;
@@ -249,8 +250,8 @@ let activeView = "recipes";
 let activeTags = new Set();
 let activeTools = new Set();
 let activeDishTypes = new Set();
-let calendarDate = new Date(today.getFullYear(), today.getMonth(), 1);
-let calendarView = "month";
+let calendarView = loadCalendarView();
+let calendarDate = calendarView === "week" ? new Date(today) : new Date(today.getFullYear(), today.getMonth(), 1);
 let selectedMealDate = iso(today);
 let pendingImage = "";
 let pendingSource = null;
@@ -657,12 +658,19 @@ function calendarPeriodLabel(days) {
   return `${first.getFullYear()}年${first.getMonth() + 1}月${first.getDate()}日〜${last.getDate()}日`;
 }
 
+function loadCalendarView() {
+  try { return localStorage.getItem(CALENDAR_VIEW_KEY) === "week" ? "week" : "month"; }
+  catch { return "month"; }
+}
+
 function setCalendarView(view) {
   if (!['month', 'week'].includes(view) || calendarView === view) return;
   if (view === "week" && calendarDate.getFullYear() === today.getFullYear() && calendarDate.getMonth() === today.getMonth()) {
     calendarDate = new Date(today);
   }
   calendarView = view;
+  try { localStorage.setItem(CALENDAR_VIEW_KEY, view); }
+  catch { toast("表示を切り替えましたが、次回の表示設定を保存できませんでした"); }
   renderCalendar();
 }
 
