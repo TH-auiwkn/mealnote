@@ -430,6 +430,9 @@ function formatLastCooked(value) {
   if (!value) return "まだ作っていません";
   const date = new Date(`${value}T00:00:00`);
   const days = Math.round((today - date) / 86400000);
+  if (days === -1) return "明日作る予定です";
+  if (days < -1 && days > -30) return `${Math.abs(days)}日後に作る予定です`;
+  if (days < 0) return `${date.getMonth() + 1}月${date.getDate()}日に作る予定です`;
   if (days === 0) return "今日作りました";
   if (days === 1) return "昨日作りました";
   if (days > 1 && days < 30) return `${days}日前に作りました`;
@@ -486,11 +489,27 @@ function matchesRecipeQuery(recipe, query) {
   return searchableValues.some((value) => String(value || "").normalize("NFKC").toLocaleLowerCase("ja").includes(normalizedQuery));
 }
 
-function compareRecipesByNeglect(a, b) {
-  if (!a.lastCooked && b.lastCooked) return -1;
-  if (a.lastCooked && !b.lastCooked) return 1;
-  return (a.lastCooked || a.createdAt || "").localeCompare(b.lastCooked || b.createdAt || "")
+function compareRecipesByNeglect(a, b, cookedDates = scheduledLastCookedDates()) {
+  const aLastCooked = recipeLastCooked(a, cookedDates);
+  const bLastCooked = recipeLastCooked(b, cookedDates);
+  if (!aLastCooked && bLastCooked) return -1;
+  if (aLastCooked && !bLastCooked) return 1;
+  return (aLastCooked || a.createdAt || "").localeCompare(bLastCooked || b.createdAt || "")
     || a.name.localeCompare(b.name, "ja");
+}
+
+function scheduledLastCookedDates() {
+  return window.MealnoteHistory.lastCookedDates(state.schedule, iso(today));
+}
+
+function recipeLastCooked(recipe, cookedDates = scheduledLastCookedDates()) {
+  return window.MealnoteHistory.recipeLastCookedDate(recipe, cookedDates, iso(today));
+}
+
+function syncStoredLastCooked(recipeId) {
+  const recipe = state.recipes.find((item) => item.id === recipeId);
+  if (!recipe) return;
+  recipe.lastCooked = scheduledLastCookedDates().get(recipeId) || "";
 }
 
 function filteredRecipes() {
@@ -504,10 +523,11 @@ function filteredRecipes() {
     const matchesDishTypes = activeDishTypes.size === 0 || activeDishTypes.has(recipe.dishType);
     return matchesQuery && matchesTags && matchesTools && matchesDishTypes;
   });
+  const cookedDates = scheduledLastCookedDates();
   recipes.sort((a, b) => {
     if (sort === "name") return a.name.localeCompare(b.name, "ja");
-    if (sort === "cooked") return (b.lastCooked || "").localeCompare(a.lastCooked || "");
-    if (sort === "stale") return compareRecipesByNeglect(a, b);
+    if (sort === "cooked") return window.MealnoteHistory.compareRecipesByLastCooked(a, b, cookedDates, iso(today));
+    if (sort === "stale") return compareRecipesByNeglect(a, b, cookedDates);
     return (b.createdAt || "").localeCompare(a.createdAt || "");
   });
   return recipes;
@@ -516,6 +536,7 @@ function filteredRecipes() {
 function renderRecipes() {
   renderTags();
   const recipes = filteredRecipes();
+  const cookedDates = scheduledLastCookedDates();
   $("resultSummary").textContent = `${recipes.length}件のレシピ`;
   $("recipeEmpty").hidden = recipes.length !== 0;
   $("recipeGrid").hidden = recipes.length === 0;
@@ -529,7 +550,7 @@ function renderRecipes() {
         </div>
         <div class="recipe-summary">
           <span class="time-pill"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${recipe.time}分</span>
-          <p class="recipe-meta">${escapeHTML(formatLastCooked(recipe.lastCooked))}</p>
+          <p class="recipe-meta">${escapeHTML(formatLastCooked(recipeLastCooked(recipe, cookedDates)))}</p>
         </div>
       </button>
       <button class="recipe-delete" type="button" data-delete-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.name)}を削除">
@@ -596,7 +617,7 @@ function openRecipeDetail(id) {
   if (!recipe) return;
   $("recipeDetail").innerHTML = `
     <div class="detail-body">
-      <div class="detail-head"><div><h2 id="detailTitle">${escapeHTML(recipe.name)}</h2><p>${escapeHTML(recipe.dishType)} ・ ${recipe.time}分 ・ ${recipe.servings}人分 ・ ${escapeHTML(formatLastCooked(recipe.lastCooked))}</p></div></div>
+      <div class="detail-head"><div><h2 id="detailTitle">${escapeHTML(recipe.name)}</h2><p>${escapeHTML(recipe.dishType)} ・ ${recipe.time}分 ・ ${recipe.servings}人分 ・ ${escapeHTML(formatLastCooked(recipeLastCooked(recipe)))}</p></div></div>
       <div class="detail-actions">
         <button class="primary-button" type="button" data-schedule-recipe="${escapeAttr(recipe.id)}">献立に追加</button>
         <button class="secondary-button" type="button" data-shop-recipe="${escapeAttr(recipe.id)}">材料を買い物へ</button>
@@ -715,15 +736,19 @@ function removeMeal(date, recipeId) {
   const recipe = state.recipes.find((item) => item.id === recipeId);
   state.schedule[date] = recipeIds.filter((id) => id !== recipeId);
   if (!state.schedule[date].length) delete state.schedule[date];
+  if (date <= iso(today)) syncStoredLastCooked(recipeId);
   saveState();
   renderCalendar();
+  renderRecipes();
   if ($("mealPickerDialog").open && selectedMealDate === date) renderMealPicker();
   toast(`${recipe?.name || "献立"}の予定を削除しました`, "元に戻す", () => {
     const restored = [...(state.schedule[date] || [])];
     if (!restored.includes(recipeId) && restored.length < MAX_MEALS_PER_DAY) restored.splice(Math.min(removedIndex, restored.length), 0, recipeId);
     state.schedule[date] = restored;
+    if (date <= iso(today)) syncStoredLastCooked(recipeId);
     saveState();
     renderCalendar();
+    renderRecipes();
     if ($("mealPickerDialog").open && selectedMealDate === date) renderMealPicker();
     toast("予定を元に戻しました");
   });
@@ -754,9 +779,10 @@ function renderMealPicker(preferred = "") {
   $("calendarNoteForm").querySelector("button").disabled = notes.length >= MAX_NOTES_PER_DAY;
   let recipes = state.recipes.filter((recipe) => matchesRecipeQuery(recipe, query));
   if (preferred) recipes = recipes.sort((item) => item.id === preferred ? -1 : 0);
+  const cookedDates = scheduledLastCookedDates();
   $("mealPickerList").innerHTML = recipes.length ? recipes.map((recipe) => `
     <button class="picker-item" type="button" data-pick-recipe="${escapeAttr(recipe.id)}"${scheduledIds.includes(recipe.id) || isFull ? " disabled" : ""}>
-      <span><strong>${escapeHTML(recipe.name)}</strong><small>${escapeHTML(formatLastCooked(recipe.lastCooked))}</small></span><span class="picker-add" aria-hidden="true">${scheduledIds.includes(recipe.id) ? "追加済み" : (isFull ? "上限" : "＋")}</span>
+      <span><strong>${escapeHTML(recipe.name)}</strong><small>${escapeHTML(formatLastCooked(recipeLastCooked(recipe, cookedDates)))}</small></span><span class="picker-add" aria-hidden="true">${scheduledIds.includes(recipe.id) ? "追加済み" : (isFull ? "上限" : "＋")}</span>
     </button>`).join("") : `<div class="empty-state small"><h2>見つかりません</h2><p>別の名前や材料で検索してください。</p></div>`;
 }
 
@@ -826,10 +852,7 @@ function addMeal(recipeId) {
   if (recipeIds.length >= MAX_MEALS_PER_DAY) { toast("1日に登録できる献立は10品までです"); return; }
   state.schedule[selectedMealDate] = [...recipeIds, recipeId];
   const selectedDate = new Date(`${selectedMealDate}T00:00:00`);
-  if (selectedDate <= today) {
-    const recipe = state.recipes.find((item) => item.id === recipeId);
-    if (recipe) recipe.lastCooked = selectedMealDate;
-  }
+  if (selectedDate <= today) syncStoredLastCooked(recipeId);
   calendarDate = calendarView === "week" ? selectedDate : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
   saveState();
   renderCalendar();
